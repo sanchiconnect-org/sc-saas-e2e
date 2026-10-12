@@ -80,6 +80,11 @@ In GitHub, go to **Settings → Environments** and create three environments: `d
 - `QA_OTP`
 - `QA_<ROLE>_EMAIL` for: `STARTUP`, `INVESTOR`, `CORPORATE`, `MENTOR`, `PARTNER`, `SERVICE_PROVIDER`, `INDIVIDUAL`, `PROGRAM_OFFICE`
 - `QA_ADMIN_EMAIL` / `QA_ADMIN_PASSWORD`, `QA_JURY_EMAIL` / `QA_JURY_PASSWORD`
+- CFA regression suite (optional, see "CFA regression suite" below):
+  - `QA_CFA_TEMPLATE_FORM_ID`: id of the `[QA] E2E template form`. The whole `cfa` project is skipped without it.
+  - `QA_CFA_NDA_PROGRAM_ID`: id of the `[QA] CFA NDA (do not delete)` program. Jury NDA tests are skipped without it.
+  - `QA_CFA_CLOSED_PROGRAM_PATH`: `{code}/{slug}` of the `[QA] CFA Closed (do not delete)` program. Closed-program tests are skipped without it.
+  - `QA_CFA_EMAIL_PATTERN`, e.g. `sc_cfa_*@yopmail.com`: guest applicants. The QA backend's `QA_FIXED_OTP_EMAILS` must include the same pattern. Guest-OTP tests are skipped without it.
 
 If a role's secret is missing, that role's tests are **skipped**, not failed. Check the skip count in the report.
 
@@ -115,8 +120,11 @@ tests/
   frontend/login-otp.spec.ts  the login journey; runs first (project "login")
   frontend.setup.ts  logs in once per member account → .auth/<role>.json
   admin.setup.ts     logs in once as admin and jury  → .auth/<role>.json
+  cfa.setup.ts       creates this run's CFA program  → .cfa/run.json (project "cfa-setup")
+  cfa.teardown.ts    deletes it, throwaways, orphans (project "cfa-teardown")
   frontend/       PWA journeys   (project "frontend", baseURL = FRONTEND_URL)
   admin/          admin journeys (project "admin",    baseURL = ADMIN_URL)
+  cfa/            CFA regression (project "cfa",      baseURL = FRONTEND_URL; admin via fixtures/cfa.ts)
 ```
 
 ## Adding a journey
@@ -153,6 +161,30 @@ test.describe('investor views a startup', { tag: ['@regression', '@frontend', '@
   });
 });
 ```
+
+## CFA regression suite
+
+Call for Applications end to end, in `tests/cfa/` (spec FT-006, Linear project "CFA E2E Regression Suite (FT-006)"). Run it with `npm run test:cfa`. Every test is tagged `@regression @cfa`, plus `@write` when it writes, so none of it runs on production.
+
+**Per-run program.** The `cfa-setup` project creates one program per run, titled `[QA] CFA run-<runId>`, where the run id is `<yyyymmdd-hhmm UTC>-<random>` (set `CFA_RUN_ID` to pin it). It imports the template form's fields, allows re-application immediately, adds rounds `[QA] R1-<runId>` and `[QA] R2-<runId>` (R2 has a rating criterion), switches test mode on, and then makes the program live. The result is written to `.cfa/run.json` (git-ignored). Test mode keeps the program out of every program list, while the apply page still opens at `/programs/apply/{code}/{slug}`. The `cfa-teardown` project deletes it after the last CFA test. It also deletes throwaway programs that tests created with `createCfaProgram()`, and any `[QA] CFA run-*` program whose run started more than 24h ago (crashed runs).
+
+**Writing a CFA test.** Import `test` and `expect` from `fixtures/cfa.ts`, not from `@playwright/test`:
+- `cfaProgram` is the run's program.
+- `cfaFlags` holds the five CFA flags, read once per run from the tenant-verification response. Use `test.skip(!cfaFlags.x, 'x is off on this tenant')`. `jury_nda_enabled` is `null` because that response does not expose it.
+- `cfaAdmin.submitAction(pagePath, action, form)` posts the same `submitAction` the admin UI posts, on the saved admin session. It returns the JSON body and throws on `error: true`.
+- `cfaAdmin.seedSubmittedApplications(program, n)` seeds up to 10 submitted applications in a few seconds.
+
+Give every applicant you create a unique name or a `cfaEmail(runId, …)` address, and never touch another test's rows. A test that changes state for the whole program or a whole round (freeze, close, rounds, test mode) creates its own program with `createCfaProgram()` and deletes it in `afterAll`.
+
+**Never use Jury NDA on a per-run or throwaway program.** NDA rows make the program undeletable. NDA tests use the long-lived `QA_CFA_NDA_PROGRAM_ID` program only.
+
+**One-off prerequisites per environment** (create by hand in the QA tenant's admin panel; never delete):
+- `[QA] E2E template form`, with a representative field set → `QA_CFA_TEMPLATE_FORM_ID`
+- `[QA] CFA NDA (do not delete)`, in test mode, with the seeded QA jury allotted → `QA_CFA_NDA_PROGRAM_ID`
+- `[QA] CFA Closed (do not delete)`, live, test mode **off**, applications closed → `QA_CFA_CLOSED_PROGRAM_PATH`
+- `sc_cfa_*@yopmail.com` in the QA backend's `QA_FIXED_OTP_EMAILS` → `QA_CFA_EMAIL_PATTERN`
+
+**Leftover rows.** Deleting a program removes its form, submissions, rounds, ratings, jury, questions and FAQs. It does **not** remove leads, documents, AI analyses, notifications, S3 objects or email logs, so these build up on the QA tenant: about one program's worth per run. Cleaning them up is SAN-1613's job. Until it lands, never assert on global counts (total leads, total emails); assert only on rows filtered by your own run id or address.
 
 ## Rules the suite lives by
 

@@ -7,6 +7,9 @@ node_modules/
 # Logged-in browser state per stakeholder (contains session tokens)
 .auth/
 
+# CFA suite per-run state (program ids of the current run; see fixtures/cfa.ts)
+.cfa/
+
 # Playwright output
 test-results/
 playwright-report/

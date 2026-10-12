@@ -62,5 +62,27 @@ export default defineConfig({
       dependencies: ['setup-admin'],
       use: { ...devices['Desktop Chrome'], baseURL: env.adminUrl },
     },
+    /* CFA regression suite (FT-006). cfa-setup creates this run's test-mode program (.cfa/run.json);
+       cfa-teardown deletes it, plus throwaways and >24h orphans, after every cfa test has finished. */
+    {
+      name: 'cfa-setup',
+      testMatch: /cfa\.setup\.ts/,
+      dependencies: ['setup-admin'],
+      teardown: 'cfa-teardown',
+      use: { ...devices['Desktop Chrome'], baseURL: env.adminUrl },
+    },
+    {
+      name: 'cfa-teardown',
+      testMatch: /cfa\.teardown\.ts/,
+      use: { ...devices['Desktop Chrome'], baseURL: env.adminUrl },
+    },
+    /* Each CFA test spans the admin panel and the PWA, so it needs both saved sessions.
+       baseURL is the PWA; admin pages go through fixtures/cfa.ts or an explicit env.adminUrl. */
+    {
+      name: 'cfa',
+      testDir: './tests/cfa',
+      dependencies: ['setup-frontend', 'setup-admin', 'cfa-setup'],
+      use: { ...devices['Desktop Chrome'], baseURL: env.frontendUrl },
+    },
   ],
 });

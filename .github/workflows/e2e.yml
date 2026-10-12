@@ -47,6 +47,11 @@ jobs:
       QA_ADMIN_PASSWORD: ${{ secrets.QA_ADMIN_PASSWORD }}
       QA_JURY_EMAIL: ${{ secrets.QA_JURY_EMAIL }}
       QA_JURY_PASSWORD: ${{ secrets.QA_JURY_PASSWORD }}
+      # CFA regression suite (FT-006); the cfa project is skipped without QA_CFA_TEMPLATE_FORM_ID
+      QA_CFA_TEMPLATE_FORM_ID: ${{ secrets.QA_CFA_TEMPLATE_FORM_ID }}
+      QA_CFA_NDA_PROGRAM_ID: ${{ secrets.QA_CFA_NDA_PROGRAM_ID }}
+      QA_CFA_CLOSED_PROGRAM_PATH: ${{ secrets.QA_CFA_CLOSED_PROGRAM_PATH }}
+      QA_CFA_EMAIL_PATTERN: ${{ secrets.QA_CFA_EMAIL_PATTERN }}
     steps:
       - uses: actions/checkout@v7
 

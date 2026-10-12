@@ -46,4 +46,23 @@ export const env = {
   get spokeUrl(): string | undefined {
     return process.env.SPOKE_URL?.replace(/\/+$/, '') || undefined;
   },
+  /** CFA regression suite settings (FT-006). All optional: what needs a missing one skips. */
+  cfa: {
+    /** Admin id of the hand-made "[QA] E2E template form" whose fields every CFA program imports. Required by the cfa project. */
+    get templateFormId(): string | undefined {
+      return process.env.QA_CFA_TEMPLATE_FORM_ID?.trim() || undefined;
+    },
+    /** Admin id of the long-lived "[QA] CFA NDA (do not delete)" program (P5 only). */
+    get ndaProgramId(): string | undefined {
+      return process.env.QA_CFA_NDA_PROGRAM_ID?.trim() || undefined;
+    },
+    /** "{code}/{slug}" of the long-lived "[QA] CFA Closed (do not delete)" program (P3/P4 only). */
+    get closedProgramPath(): string | undefined {
+      return process.env.QA_CFA_CLOSED_PROGRAM_PATH?.trim().replace(/^\/+|\/+$/g, '') || undefined;
+    },
+    /** Guest-applicant address pattern with one "*" in the local part, e.g. sc_cfa_*@yopmail.com (SAN-1877). */
+    get emailPattern(): string | undefined {
+      return process.env.QA_CFA_EMAIL_PATTERN?.trim() || undefined;
+    },
+  },
 };
