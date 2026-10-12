@@ -41,7 +41,7 @@ Every member login is an OTP. The QA backend issues a **fixed OTP** for the seed
 
 | Backend env var | Value |
 |---|---|
-| `QA_FIXED_OTP_EMAILS` | comma-separated list of every `QA_*_EMAIL` member address |
+| `QA_FIXED_OTP_EMAILS` | comma-separated list of every `QA_*_EMAIL` member address, plus `sc_reg_*@yopmail.com` for the register journey (`*` in the local part only, SAN-1877) |
 | `QA_FIXED_OTP` | 4 digits, no leading zero. The same value goes in this repo's `QA_OTP` secret. |
 
 If either variable is unset or blank, that deployment has no bypass, which is the default on every other tenant. This replaced the old hardcoded `PenetrationTestingEmails` list (always `1234`), which was live on production and **no longer works anywhere** once SAN-1864 is deployed.
@@ -75,6 +75,7 @@ Never put a credential in this repo, in Linear, or in a PR description.
 In GitHub, go to **Settings → Environments** and create three environments: `development`, `staging` and `production`. Add every variable from [`env.example`](env.example) as a secret of the same name in each:
 
 - `FRONTEND_URL`, `ADMIN_URL`, `API_URL` (without `/api`)
+- `QA_REGISTER_EMAIL_PATTERN` (optional, e.g. `sc_reg_*@yopmail.com`): fresh address per run for journey 2. The QA backend's `QA_FIXED_OTP_EMAILS` must include the same pattern (SAN-1877). Journey 2 is skipped without it.
 - `SPOKE_URL` (optional): a partner spoke registered in that environment's cockpit. Journey 8 is skipped without it.
 - `QA_OTP`
 - `QA_<ROLE>_EMAIL` for: `STARTUP`, `INVESTOR`, `CORPORATE`, `MENTOR`, `PARTNER`, `SERVICE_PROVIDER`, `INDIVIDUAL`, `PROGRAM_OFFICE`
