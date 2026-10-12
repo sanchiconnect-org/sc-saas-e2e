@@ -8,6 +8,13 @@ import { memberAccount, qaOtp } from '../../config/accounts';
 import { LoginPage, dashboardPathFor } from '../../pages/frontend/LoginPage';
 
 test.describe('login with OTP', { tag: ['@smoke', '@frontend', '@startup'] }, () => {
+  test('the login page offers email OTP', async ({ page }) => {
+    const login = new LoginPage(page);
+    await login.goto();
+    await expect(login.emailInput).toBeVisible();
+    await expect(login.continueButton).toBeVisible();
+  });
+
   test('a startup logs in with email OTP and reaches the dashboard', async ({ page }) => {
     const account = memberAccount('startup');
     test.skip(!account, 'QA_STARTUP_EMAIL not set');

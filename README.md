@@ -6,28 +6,25 @@ Part of the Linear project **QA Automation and Acceptance**. Owner on the ground
 
 ---
 
-## Test environment
+## Test environments
 
-> **Decision status: PENDING** ([SAN-1581](https://linear.app/sanchiconnect/issue/SAN-1581)). Record the decision here when it's made: the date, who made it, and why.
+There is one environment per deployed branch. Each has its own QA tenant and its own seeded accounts. Testing runs in this order: **development first**, then staging, then production.
 
-The rule from the project: use a **staging environment** if one exists. Otherwise use a **dedicated QA tenant on production** that holds no real users and no real data. Either way there is one QA tenant per environment.
+| `E2E_ENV` | Branch | Deployed on | QA tenant (member PWA / admin / API) | Writes data? |
+|---|---|---|---|---|
+| `development` (default) | `ai_native_setup` | sanchidev.in | `https://thub.sanchidev.in` / `https://adm.thub.sanchidev.in` / `https://api.thub.sanchidev.in` | yes |
+| `staging` | `stagingdemo` | production AWS, via Jenkins | _to be created_ | yes, on its QA tenant only |
+| `production` | `main` / `master` | production AWS, via Jenkins | _to be created_ | **no**: tests tagged `@write` are skipped (`playwright.config.ts`) |
 
-What we know as of 12 Oct 2026:
+Decided 12 Oct 2026 (SAN-1581). The old staging cockpit `api-dev.tenants.sanchiconnect.com` returns 502 and isn't used.
 
-- There is no `docs/DEPLOYMENT.md` in any repo.
-- The frontend's staging build points at the cockpit `https://api-dev.tenants.sanchiconnect.com`. That host **returns 502**, so there is no working staging right now.
-- In SanchiSaaS a tenant is a **deployment**, not just a database row. Each tenant runs its own backend. Creating the QA tenant takes:
-  1. an `organizations` row in the tenants DB,
-  2. a `tenant_users` row pointing at it (both via `sanchiconnect-saas-tenants-admin`),
-  3. a backend deployment for that tenant,
-  4. DNS and hosting for the frontend and admin panel.
+A code change reaches each environment by moving from branch to branch: `ai_native_setup` → `stagingdemo` → `main`. A backend fix that the suite depends on, such as SAN-1864, has to be deployed to an environment before that environment's run can go green.
 
-How the suite behaves in each environment:
-
-| `E2E_ENV` | Runs | Writes data? |
-|---|---|---|
-| `staging` | the full suite | yes |
-| `production` | the QA tenant on production | **no**: tests tagged `@write` are skipped (`playwright.config.ts`) |
+In SanchiSaaS a tenant is a **deployment**, not just a database row, because each tenant runs its own backend. Creating a QA tenant on staging or production therefore takes:
+1. an `organizations` row in the tenants DB,
+2. a `tenant_users` row pointing at it (both via `sanchiconnect-saas-tenants-admin`),
+3. a backend deployment for that tenant,
+4. DNS and hosting for the frontend and admin panel.
 
 ### QA tenant settings the suite relies on
 
@@ -59,20 +56,23 @@ The backend compares the submitted code against an md5 hash. The PWA hashes the 
 npm ci
 npx playwright install chromium
 
-cp env.example .env.staging      # fill in URLs + QA accounts (git-ignored)
-E2E_ENV=staging npm run seed     # create any missing QA accounts
-E2E_ENV=staging npm test         # run everything
-E2E_ENV=staging npm run test:smoke
+cp env.example .env.development      # dev values are pre-filled; add admin/jury (git-ignored)
+npm run seed                         # create any missing QA accounts (E2E_ENV=development)
+npm test                             # run everything against development
+npm run test:smoke
+
+E2E_ENV=staging npm run test:smoke      # needs .env.staging
+E2E_ENV=production npm run test:smoke   # needs .env.production; read-only
 npm run report                   # open the last HTML report
 ```
 
-`E2E_ENV` defaults to `staging`. Settings are read from `.env.<E2E_ENV>` locally and from GitHub secrets in CI.
+`E2E_ENV` defaults to `development`. Settings are read from `.env.<E2E_ENV>` locally and from GitHub secrets in CI.
 
 ## Secrets
 
 Never put a credential in this repo, in Linear, or in a PR description.
 
-In GitHub, go to **Settings → Environments** and create two environments, `staging` and `production`. Add every variable from [`env.example`](env.example) as a secret of the same name in each:
+In GitHub, go to **Settings → Environments** and create three environments: `development`, `staging` and `production`. Add every variable from [`env.example`](env.example) as a secret of the same name in each:
 
 - `FRONTEND_URL`, `ADMIN_URL`, `API_URL` (without `/api`)
 - `QA_OTP`
@@ -95,7 +95,7 @@ If a role's secret is missing, that role's tests are **skipped**, not failed. Ch
 
 `.github/workflows/e2e.yml` runs:
 
-- **nightly** at 02:00 IST against `staging`, with the full suite,
+- **nightly** at 02:00 IST against `development`, with the full suite,
 - **on demand** via *Actions → e2e → Run workflow*, where you choose the environment and a tag (default `@smoke`).
 
 CI retries a failed test once. A test that passes only on the retry is reported as **flaky**. Quarantine it the same day with a Linear issue; never re-run until green.
@@ -155,7 +155,7 @@ test.describe('investor views a startup', { tag: ['@regression', '@frontend', '@
 1. A flaky test is quarantined the same day with an issue, never re-run until green.
 2. Every journey has one owner, and the owner fixes it when it fails.
 3. The smoke suite runs in under 10 minutes.
-4. Tests that write run against staging, and only read-only tests run on production.
+4. Tests that write run on development and staging; only read-only tests run on production.
 5. An escaped defect gets a test before its fix merges.
 
 ## Nightly reset plan (SAN-1613)

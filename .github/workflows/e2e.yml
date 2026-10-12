@@ -6,18 +6,18 @@ on:
       environment:
         description: 'Environment to run against'
         type: choice
-        options: [staging, production]
-        default: staging
+        options: [development, staging, production]
+        default: development
       grep:
         description: 'Only run tests matching this tag (e.g. @smoke). Empty runs everything.'
         type: string
         default: '@smoke'
   schedule:
-    # Nightly at 02:00 IST (20:30 UTC)
+    # Nightly at 02:00 IST (20:30 UTC) against development (ai_native_setup)
     - cron: '30 20 * * *'
 
 concurrency:
-  group: e2e-${{ github.event.inputs.environment || 'staging' }}
+  group: e2e-${{ github.event.inputs.environment || 'development' }}
   cancel-in-progress: false
 
 jobs:
@@ -25,10 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Each environment is a GitHub Environment holding its own secrets (Settings → Environments).
-    environment: ${{ github.event.inputs.environment || 'staging' }}
+    environment: ${{ github.event.inputs.environment || 'development' }}
     env:
       CI: 'true'
-      E2E_ENV: ${{ github.event.inputs.environment || 'staging' }}
+      E2E_ENV: ${{ github.event.inputs.environment || 'development' }}
       FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
       ADMIN_URL: ${{ secrets.ADMIN_URL }}
       API_URL: ${{ secrets.API_URL }}

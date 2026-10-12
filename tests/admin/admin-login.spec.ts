@@ -7,6 +7,13 @@ import { adminAccount } from '../../config/accounts';
 import { AdminLoginPage } from '../../pages/admin/AdminLoginPage';
 
 test.describe('admin panel login', { tag: ['@smoke', '@admin'] }, () => {
+  test('the admin login page loads', async ({ page }) => {
+    const login = new AdminLoginPage(page);
+    await login.goto();
+    await expect(login.passwordInput).toBeVisible();
+    await expect(login.signInButton).toBeVisible();
+  });
+
   test('admin logs in and the dashboard loads', async ({ page }) => {
     const account = adminAccount('admin');
     test.skip(!account, 'QA_ADMIN_EMAIL / QA_ADMIN_PASSWORD not set');
