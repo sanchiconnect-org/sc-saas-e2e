@@ -75,6 +75,7 @@ Never put a credential in this repo, in Linear, or in a PR description.
 In GitHub, go to **Settings → Environments** and create three environments: `development`, `staging` and `production`. Add every variable from [`env.example`](env.example) as a secret of the same name in each:
 
 - `FRONTEND_URL`, `ADMIN_URL`, `API_URL` (without `/api`)
+- `SPOKE_URL` (optional): a partner spoke registered in that environment's cockpit. Journey 8 is skipped without it.
 - `QA_OTP`
 - `QA_<ROLE>_EMAIL` for: `STARTUP`, `INVESTOR`, `CORPORATE`, `MENTOR`, `PARTNER`, `SERVICE_PROVIDER`, `INDIVIDUAL`, `PROGRAM_OFFICE`
 - `QA_ADMIN_EMAIL` / `QA_ADMIN_PASSWORD`, `QA_JURY_EMAIL` / `QA_JURY_PASSWORD`

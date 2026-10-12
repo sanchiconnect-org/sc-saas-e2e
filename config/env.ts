@@ -42,4 +42,8 @@ export const env = {
   get apiUrl() {
     return required('API_URL');
   },
+  /** Optional: a registered partner spoke of the QA tenant, e.g. https://<abbr>.thub.sanchidev.in */
+  get spokeUrl(): string | undefined {
+    return process.env.SPOKE_URL?.replace(/\/+$/, '') || undefined;
+  },
 };
