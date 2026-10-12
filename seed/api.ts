@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { env } from '../config/env';
 
 /**
@@ -60,7 +61,9 @@ export async function verifiedEmailId(email: string, name: string, otp: string):
   const res = await call<{ id: string }>('POST', 'public/otp_verifications/verify', {
     type: 'email',
     emailAddress: email,
-    code: otp,
+    /* The backend compares against the stored md5 hash without re-hashing, so the
+       client sends md5(code) — exactly what the PWA does (sc-saas-frontend auth.service.ts). */
+    code: createHash('md5').update(otp).digest('hex'),
   });
   if (!res.data?.id) throw new Error(`OTP verify for ${email} returned no verification id`);
   return res.data.id;

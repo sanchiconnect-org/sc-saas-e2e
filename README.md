@@ -40,9 +40,16 @@ How the suite behaves in each environment:
 
 ### Logging in without a real inbox
 
-Every member login is an OTP. Today the backend accepts the fixed OTP `1234` only for a hardcoded list of 5 addresses (`PenetrationTestingEmails`). That list is active on **every** tenant, production included, so we must not extend it.
+Every member login is an OTP. The QA backend issues a **fixed OTP** for the seeded accounts, so no inbox is needed ([SAN-1864](https://linear.app/sanchiconnect/issue/SAN-1864)). Set these on the **QA tenant's backend deployment only**:
 
-The prerequisite is a backend change that reads the fixed-OTP addresses from an environment variable. The variable is set only on the QA deployment and empty everywhere else. Until that ships, seeding and member login can only use those 5 legacy addresses.
+| Backend env var | Value |
+|---|---|
+| `QA_FIXED_OTP_EMAILS` | comma-separated list of every `QA_*_EMAIL` member address |
+| `QA_FIXED_OTP` | 4 digits, no leading zero. The same value goes in this repo's `QA_OTP` secret. |
+
+If either variable is unset or blank, that deployment has no bypass, which is the default on every other tenant. This replaced the old hardcoded `PenetrationTestingEmails` list (always `1234`), which was live on production and **no longer works anywhere** once SAN-1864 is deployed.
+
+The backend compares the submitted code against an md5 hash. The PWA hashes the OTP before sending it, and so does `seed/api.ts`; anything that calls `/otp_verifications/verify` directly must do the same.
 
 ---
 
