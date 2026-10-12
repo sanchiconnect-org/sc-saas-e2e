@@ -1,0 +1,86 @@
+name: e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to run against'
+        type: choice
+        options: [staging, production]
+        default: staging
+      grep:
+        description: 'Only run tests matching this tag (e.g. @smoke). Empty runs everything.'
+        type: string
+        default: '@smoke'
+  schedule:
+    # Nightly at 02:00 IST (20:30 UTC)
+    - cron: '30 20 * * *'
+
+concurrency:
+  group: e2e-${{ github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Each environment is a GitHub Environment holding its own secrets (Settings → Environments).
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    env:
+      CI: 'true'
+      E2E_ENV: ${{ github.event.inputs.environment || 'staging' }}
+      FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+      ADMIN_URL: ${{ secrets.ADMIN_URL }}
+      API_URL: ${{ secrets.API_URL }}
+      QA_OTP: ${{ secrets.QA_OTP }}
+      QA_STARTUP_EMAIL: ${{ secrets.QA_STARTUP_EMAIL }}
+      QA_INVESTOR_EMAIL: ${{ secrets.QA_INVESTOR_EMAIL }}
+      QA_CORPORATE_EMAIL: ${{ secrets.QA_CORPORATE_EMAIL }}
+      QA_MENTOR_EMAIL: ${{ secrets.QA_MENTOR_EMAIL }}
+      QA_PARTNER_EMAIL: ${{ secrets.QA_PARTNER_EMAIL }}
+      QA_SERVICE_PROVIDER_EMAIL: ${{ secrets.QA_SERVICE_PROVIDER_EMAIL }}
+      QA_INDIVIDUAL_EMAIL: ${{ secrets.QA_INDIVIDUAL_EMAIL }}
+      QA_PROGRAM_OFFICE_EMAIL: ${{ secrets.QA_PROGRAM_OFFICE_EMAIL }}
+      QA_ADMIN_EMAIL: ${{ secrets.QA_ADMIN_EMAIL }}
+      QA_ADMIN_PASSWORD: ${{ secrets.QA_ADMIN_PASSWORD }}
+      QA_JURY_EMAIL: ${{ secrets.QA_JURY_EMAIL }}
+      QA_JURY_PASSWORD: ${{ secrets.QA_JURY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run tests
+        env:
+          # Scheduled runs have no inputs, so GREP is empty and the full suite runs.
+          GREP: ${{ github.event.inputs.grep }}
+        run: |
+          if [ -n "$GREP" ]; then npx playwright test --grep "$GREP"; else npx playwright test; fi
+
+      - name: Upload HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ env.E2E_ENV }}-${{ github.run_number }}
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload traces and results
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ env.E2E_ENV }}-${{ github.run_number }}
+          path: test-results/
+          retention-days: 14
