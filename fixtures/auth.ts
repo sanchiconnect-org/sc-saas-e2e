@@ -3,7 +3,7 @@ import { QARole, authFile } from '../config/accounts';
 
 /**
  * Start every test in the current describe block already logged in as `role`,
- * using the session tests/auth.setup.ts saved to .auth/<role>.json.
+ * using the session tests/frontend.setup.ts or tests/admin.setup.ts saved to .auth/<role>.json.
  *
  *   test.describe('investor connects with a startup', () => {
  *     asRole('investor');

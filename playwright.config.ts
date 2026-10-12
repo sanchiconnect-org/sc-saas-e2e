@@ -25,22 +25,41 @@ export default defineConfig({
     navigationTimeout: 30_000,
   },
   projects: [
-    /* Logs in once per seeded account and saves the browser state to .auth/<role>.json */
+    /* The login journey does real UI logins, so it runs BEFORE any session is saved:
+       with single_session_login_enabled a new login kills that user's older session. */
     {
-      name: 'setup',
-      testMatch: /.*\.setup\.ts/,
+      name: 'login',
+      testDir: './tests/frontend',
+      testMatch: /login-otp\.spec\.ts/,
+      timeout: 180_000,
       use: { ...devices['Desktop Chrome'], baseURL: env.frontendUrl },
+    },
+    /* Log in once per seeded account and save the browser state to .auth/<role>.json.
+       Split so a broken admin login never blocks the PWA journeys, and vice versa. */
+    {
+      name: 'setup-frontend',
+      dependencies: ['login'],
+      testMatch: /frontend\.setup\.ts/,
+      /* room for one 61s wait on the login rate limit (see LoginPage.requestOtp) */
+      timeout: 180_000,
+      use: { ...devices['Desktop Chrome'], baseURL: env.frontendUrl },
+    },
+    {
+      name: 'setup-admin',
+      testMatch: /admin\.setup\.ts/,
+      use: { ...devices['Desktop Chrome'], baseURL: env.adminUrl },
     },
     {
       name: 'frontend',
       testDir: './tests/frontend',
-      dependencies: ['setup'],
+      testIgnore: /login-otp\.spec\.ts/,
+      dependencies: ['setup-frontend'],
       use: { ...devices['Desktop Chrome'], baseURL: env.frontendUrl },
     },
     {
       name: 'admin',
       testDir: './tests/admin',
-      dependencies: ['setup'],
+      dependencies: ['setup-admin'],
       use: { ...devices['Desktop Chrome'], baseURL: env.adminUrl },
     },
   ],

@@ -110,7 +110,9 @@ fixtures/     auth.ts — asRole('investor') starts a test already logged in
 pages/        Page Objects: frontend/ (PWA) and admin/ (admin panel)
 seed/         API seeding of the QA tenant
 tests/
-  auth.setup.ts   logs in once per seeded account → .auth/<role>.json
+  frontend/login-otp.spec.ts  the login journey; runs first (project "login")
+  frontend.setup.ts  logs in once per member account → .auth/<role>.json
+  admin.setup.ts     logs in once as admin and jury  → .auth/<role>.json
   frontend/       PWA journeys   (project "frontend", baseURL = FRONTEND_URL)
   admin/          admin journeys (project "admin",    baseURL = ADMIN_URL)
 ```
@@ -124,7 +126,7 @@ tests/
    - Repo: `@frontend` or `@admin`.
    - Stakeholder type, e.g. `@investor`.
    - `@write` if it creates or changes data, so it never runs against production.
-4. **Start logged in.** Call `asRole('<role>')` inside the `describe`. Skip the block when the role's secret isn't set, as `tests/frontend/seeded-accounts.spec.ts` does.
+4. **Start logged in.** Call `asRole('<role>')` inside the `describe`. Skip the block when the role's secret isn't set, as `tests/frontend/seeded-accounts.spec.ts` does. **Never log in through the UI inside a journey.** The dev tenant enforces single-session login, so a new login for a seeded account kills the saved session that other tests are using. The only UI logins are in `login-otp.spec.ts`, which runs before any session is saved, and in the setup files.
 5. **Use Page Objects** from `pages/`. Selectors live there, not in specs. Prefer `data-testid`, then roles and labels; never long CSS chains. If an element has no stable selector, add a `data-testid` in the app repo.
 6. **Record the first draft (optional).** `npx playwright codegen <FRONTEND_URL>` records clicks. Move what it records into Page Objects.
 7. **Run it 3 times locally:** `npx playwright test <file> --repeat-each=3`. Then run `npm run typecheck`.
