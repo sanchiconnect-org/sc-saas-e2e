@@ -46,9 +46,9 @@ jobs:
       QA_JURY_EMAIL: ${{ secrets.QA_JURY_EMAIL }}
       QA_JURY_PASSWORD: ${{ secrets.QA_JURY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -71,7 +71,7 @@ jobs:
 
       - name: Upload HTML report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ env.E2E_ENV }}-${{ github.run_number }}
           path: playwright-report/
@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload traces and results
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ env.E2E_ENV }}-${{ github.run_number }}
           path: test-results/
