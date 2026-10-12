@@ -13,7 +13,7 @@ There is one environment per deployed branch. Each has its own QA tenant and its
 | `E2E_ENV` | Branch | Deployed on | QA tenant (member PWA / admin / API) | Writes data? |
 |---|---|---|---|---|
 | `development` (default) | `ai_native_setup` | sanchidev.in | `https://thub.sanchidev.in` / `https://adm.thub.sanchidev.in` / `https://api.thub.sanchidev.in` | yes |
-| `staging` | `stagingdemo` | production AWS, via Jenkins | _to be created_ | yes, on its QA tenant only |
+| `staging` | `stagingdemo` | production AWS, via Jenkins (cockpit `api.tenants.sanchiconnect.com`) | `https://demo.sanchiapp.com` / `https://adm.demo.sanchiapp.com` / `https://api.demo.sanchiapp.com` | yes |
 | `production` | `main` / `master` | production AWS, via Jenkins | _to be created_ | **no**: tests tagged `@write` are skipped (`playwright.config.ts`) |
 
 Decided 12 Oct 2026 (SAN-1581). The old staging cockpit `api-dev.tenants.sanchiconnect.com` returns 502 and isn't used.
