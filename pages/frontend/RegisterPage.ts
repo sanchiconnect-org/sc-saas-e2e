@@ -43,7 +43,18 @@ export class RegisterPage {
     await emailChecked;
     await this.terms.check({ force: true });
     await expect(this.continueButton).toBeEnabled();
+    /* The OTP boxes appear immediately, but the wizard sends the email OTP ~1s later
+       (register.component.ts sendOTP('email') after 1000ms). Verifying before that
+       send lands returns 404 VERIFICATION_NOT_FOUND, so wait for the send. */
+    const otpSent = this.page.waitForResponse(
+      (r) =>
+        r.url().includes('/public/otp_verifications/send') &&
+        r.request().method() === 'POST' &&
+        (r.request().postDataJSON()?.type ?? '') === 'email',
+    );
     await this.continueButton.click();
+    const sent = await otpSent;
+    expect(sent.ok(), `email OTP send returned ${sent.status()}`).toBe(true);
   }
 
   /** Email OTP step: 4-box ng-otp-input that only reacts to real key events. */
