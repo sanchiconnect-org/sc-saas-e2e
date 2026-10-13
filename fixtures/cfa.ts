@@ -549,6 +549,203 @@ export class CfaAdmin {
     await this.moveToSubmitted(program, seeded.map((s) => s.id));
     return seeded;
   }
+
+  /* ----- form fields (P3) ----- */
+
+  /**
+   * Replaces a form's fields with `sections` (saveForm, edit-form.php): the same POST the form
+   * builder's Save sends, built from field specs instead of the builder UI. Fields are read back
+   * with formFields() to check the write landed (Medoo fails silently, see knowledge.md §3).
+   */
+  async saveFormFields(formId: string, sections: CfaFormSection[]) {
+    const form: FormFields = { formId };
+    sections.forEach((section, s) => {
+      Object.assign(form, {
+        [`data[${s}][type]`]: 'form_section',
+        [`data[${s}][multi_value]`]: '0',
+        [`data[${s}][multi_value_minimum]`]: '1',
+        [`data[${s}][multi_value_maximum]`]: 'null',
+        /* "null" = always shown; the builder's own "1" makes the PWA hide the section's fields. */
+        [`data[${s}][visiblity][show]`]: 'null',
+        [`data[${s}][visiblity][field]`]: 'null',
+        [`data[${s}][visiblity][condition]`]: 'null',
+        [`data[${s}][visiblity][value]`]: '0',
+        [`data[${s}][key]`]: section.key,
+        [`data[${s}][name]`]: section.name,
+        [`data[${s}][description]`]: 'null',
+      });
+      section.fields.forEach((field, f) => (form[`data[${s}][fields][${f}]`] = formFieldJson(field)));
+    });
+    await this.submitAction(`/form-management/edit-form/${formId}/form`, 'saveForm', form);
+    const saved = (await this.formFields(formId)).map((f) => f.key);
+    const expected = sections.flatMap((s) => s.fields.map((f) => f.key));
+    if (JSON.stringify(saved) !== JSON.stringify(expected)) {
+      throw new Error(`saveForm on form ${formId}: expected fields ${expected.join(',')}, the builder shows ${saved.join(',')}`);
+    }
+  }
+
+  /* ----- review actions on applications (P3; P4 builds on these) ----- */
+
+  private submissionsPagePath(program: { id: string; adminSlug: string }) {
+    return `/application_management/submission-application-management/${program.id}/${program.adminSlug}`;
+  }
+
+  /**
+   * Moves applications (forms_submissions ids) into a round: moveApplicationToNextRound, which
+   * calls the backend update-round. Refused while the application's current round is frozen.
+   */
+  async moveToRound(program: CfaProgram, applicationIds: string[], roundId: string) {
+    const form: FormFields = { programUUID: program.uuid, nextRoundId: roundId };
+    applicationIds.forEach((id, i) => (form[`applicationId[${i}]`] = id));
+    return this.submitAction(this.submissionsPagePath(program), 'moveApplicationToNextRound', form);
+  }
+
+  /** Rejects applications (rejectApplication → backend reject-round). */
+  async rejectApplications(program: CfaProgram, applicationIds: string[], rejectionMessage = '[QA] rejected by the CFA suite') {
+    const form: FormFields = { programUUID: program.uuid, rejectionMessage };
+    applicationIds.forEach((id, i) => (form[`applicationId[${i}]`] = id));
+    return this.submitAction(this.submissionsPagePath(program), 'rejectApplication', form);
+  }
+
+  /**
+   * Sends an application back to the applicant (sendForResubmission, application-submission-detail.php):
+   * mails resubmit-application, sets forms_submissions.submitted=0 and, while the application is in
+   * no round yet, deletes its round row (the applicant's next submit re-applies).
+   */
+  async sendForResubmission(
+    program: CfaProgram,
+    application: { detailId: string; submissionId: string; name: string; email: string },
+    reason: string,
+  ) {
+    return this.submitAction(`/application-submission-detail/${application.detailId}`, 'sendForResubmission', {
+      programId: program.id,
+      applicantName: application.name,
+      applicantEmail: application.email,
+      submissionId: application.submissionId,
+      reason,
+    });
+  }
+
+  /**
+   * Turns a round's "Freeze Application" toggle on or off (freeze_applications, edit_program_round.php).
+   * The admin refuses it unless the tenant has the Digital ID Card module (startup_recognition_enabled) on.
+   */
+  async setRoundFreeze(program: { id: string }, roundId: string, frozen: boolean) {
+    return this.submitAction(`/application_management/edit_program_round/${roundId}`, 'freeze_applications', {
+      roundId,
+      programId: program.id,
+      freeze_applications: frozen ? '1' : '0',
+    });
+  }
+
+  /**
+   * Submitted applications of a program as the admin table view lists them (first 100 rows).
+   * `detailId` is the id the detail page /application-submission-detail/{detailId} takes (the
+   * application's round row, application_program_submission_rounds.id), not the submission id.
+   * `registeredAs` is the "R" badge: the applicant's email belongs to a member account.
+   */
+  async submittedApplications(program: { id: string; adminSlug: string }): Promise<TableApplication[]> {
+    const html = await this.html(
+      `/application_management/submission-application-management-tableview/${program.id}/${program.adminSlug}?page=1&perpage=100`,
+    );
+    return html
+      .split('class="applicationBlock"')
+      .slice(1)
+      .map((row) => row.slice(0, row.indexOf('</tr>')))
+      .map((row) => {
+        const cells = row.split('<td').slice(1);
+        const text = (cell = '') => decodeHtml(cell.replace(/^[^>]*>/, '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+        return {
+          submissionId: /submissionId="(\d+)"/.exec(row)?.[1] ?? '',
+          detailId: /application-submission-detail\/(\d+)/.exec(row)?.[1] ?? '',
+          title: decodeHtml(/class="openApplicationDetail"[^>]*>([\s\S]*?)<\/a>/.exec(row)?.[1] ?? '').trim(),
+          email: (/fa-envelope mr-1"><\/i>\s*([^\s<]+)/.exec(row)?.[1] ?? '').toLowerCase(),
+          registeredAs: /data-original-title="Registered as ([^"]*)"/.exec(row)?.[1] ?? null,
+          status: text(cells[2]),
+          currentRound: decodeHtml(/<span class="badge badge-dark">([^<]*)<\/span>/.exec(cells[3] ?? '')?.[1] ?? '').trim() || null,
+        };
+      });
+  }
+}
+
+/** One row of the admin submissions table view (see CfaAdmin.submittedApplications). */
+export interface TableApplication {
+  /** forms_submissions.id */
+  submissionId: string;
+  /** id for /application-submission-detail/{detailId} */
+  detailId: string;
+  /** company name, else applicant name */
+  title: string;
+  /** applicant email; only shown (and so only filled) when the row has no company name */
+  email: string;
+  /** "Name (Account type)" when the email belongs to a member account, else null */
+  registeredAs: string | null;
+  /** Submitted | Pending | Accepted | Rejected | Tentative | Not Qualified */
+  status: string;
+  /** name of the round the application is in, or null before evaluation starts */
+  currentRound: string | null;
+}
+
+/* ---------- Form field specs (saveForm) ---------- */
+
+export type CfaFieldType = 'text_field' | 'text_area' | 'file_upload' | 'email_address_field' | 'number_field';
+
+export interface CfaFieldSpec {
+  /** field key, e.g. field_qaShortAnswer; the PWA renders text inputs with id={key} */
+  key: string;
+  name: string;
+  type: CfaFieldType;
+  required?: boolean;
+}
+
+export interface CfaFormSection {
+  key: string;
+  name: string;
+  fields: CfaFieldSpec[];
+}
+
+/** The builder's field JSON for a spec (same shape the builder stores; defaults copied from a builder-made field). */
+export function formFieldJson(spec: CfaFieldSpec): string {
+  return JSON.stringify({
+    name: spec.name,
+    key: spec.key,
+    col_size: 'col-12',
+    placeholder: null,
+    type: spec.type,
+    required: spec.required ? '1' : '0',
+    parent_db_field: null,
+    invisible: '0',
+    is_filter_field: '0',
+    field_type: 'custom',
+    db_column_name: null,
+    min_chars: null,
+    max_chars: null,
+    default_value: null,
+    rich_editor: '0',
+    regex: null,
+    min_value: null,
+    max_value: null,
+    step: null,
+    rows: [],
+    columns: [],
+    select_type: 'single',
+    layout_view: 'horizontal',
+    options: [],
+    max_selections: null,
+    link_master_data: '0',
+    master_data_source: null,
+    max_file_size: 50,
+    upload_multiple: '0',
+    max_file_selections: null,
+    file_types: [],
+    default_file_types: [],
+    sample_file_url: '',
+    /* What the builder stores once a field's properties are saved. A rule left at field=null with
+       condition "is" makes the PWA hide the field (isFieldVisibleCommon compares form[null] === null). */
+    visiblity: { show: 'show', field: 'none', condition: 'none', value: 'none' },
+    use_as_filter: '0',
+    divider: { margin: '20', add_border: '1', border_size: '1', border_style: 'solid', border_color: 'ccc' },
+  });
 }
 
 function decodeHtml(s: string): string {
