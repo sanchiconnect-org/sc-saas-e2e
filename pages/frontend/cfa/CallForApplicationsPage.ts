@@ -17,6 +17,11 @@ export class CallForApplicationsPage {
     return programs;
   }
 
+  /** The "Active" / "Past" section switch above the list ("Active" is selected on load). */
+  sectionButton(name: 'Active' | 'Past'): Locator {
+    return this.page.locator('.btn-group').getByRole('button', { name, exact: true });
+  }
+
   /** A program card, by its exact title. */
   programCard(title: string): Locator {
     return this.page.locator('app-call-for-applications-card').filter({

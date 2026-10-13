@@ -16,66 +16,18 @@
 import * as path from 'path';
 import { qaOtp } from '../../config/accounts';
 import { env } from '../../config/env';
-import {
-  cfaEmail,
-  createCfaProgram,
-  deleteCfaProgram,
-  expect,
-  test,
-  type CfaAdmin,
-  type CfaFormSection,
-  type CfaProgram,
-  type CfaRun,
-  type TableApplication,
-} from '../../fixtures/cfa';
+import { cfaEmail, deleteCfaProgram, expect, test, type CfaProgram, type CfaRun } from '../../fixtures/cfa';
 import { newestEmailLogRowId, waitForNewEmailLogRow } from '../../fixtures/email-log';
 import { type Page, type Request } from '@playwright/test';
 import { ApplicationStatusPage } from '../../pages/frontend/cfa/ApplicationStatusPage';
 import { ProgramApplyPage, isApply, isFormSave, savePayload } from '../../pages/frontend/cfa/ProgramApplyPage';
+import { FILE, NOTES, SHORT, createP3Program, rand, tableRow } from './p3-helpers';
 
 const TAGS = ['@regression', '@cfa', '@write', '@frontend'];
 const PDF = path.resolve(__dirname, '..', '..', 'fixtures', 'files', 'qa-pitch-deck.pdf');
 
-/** A short random tag, alphanumeric only so admin searches do a substring match. */
-const rand = () => Math.random().toString(36).slice(2, 8);
-
-/** The form every P3 throwaway program gets: one required field, one optional, one file upload. */
-const SHORT = { key: 'field_qaP3Short', name: 'QA short answer' };
-const NOTES = { key: 'field_qaP3Notes', name: 'QA notes' };
-const FILE = { key: 'field_qaP3File', name: 'QA pitch file' };
-const P3_FORM: CfaFormSection[] = [
-  {
-    key: 'section_qaP3',
-    name: 'QA application',
-    fields: [
-      { ...SHORT, type: 'text_field', required: true },
-      { ...NOTES, type: 'text_area' },
-      { ...FILE, type: 'file_upload' },
-    ],
-  },
-];
-
 function skipIfRunSkipped(run: CfaRun) {
   test.skip(!!run.skipReason, run.skipReason);
-}
-
-/** A test-mode throwaway program with the P3 form (bypass-OTP unless told otherwise). */
-async function createP3Program(admin: CfaAdmin, runId: string, label: string, opts: { bypassOtp?: boolean } = {}): Promise<CfaProgram> {
-  const program = await createCfaProgram(admin, { runId, label, bypassOtp: opts.bypassOtp ?? true, ratingCriteriaOnLastRound: false });
-  try {
-    await admin.saveFormFields(program.formId, P3_FORM);
-  } catch (e) {
-    await deleteCfaProgram(admin, program.id).catch(() => undefined);
-    throw e;
-  }
-  return program;
-}
-
-/** The admin table-view row of one application. */
-async function tableRow(admin: CfaAdmin, program: CfaProgram, match: (row: TableApplication) => boolean): Promise<TableApplication> {
-  const rows = (await admin.submittedApplications(program)).filter(match);
-  expect(rows, 'matching rows in the admin table view').toHaveLength(1);
-  return rows[0];
 }
 
 /** Records every apply call and final (submitted=true) save the page makes. */
