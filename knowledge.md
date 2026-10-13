@@ -66,9 +66,30 @@ This file records **what the product does that the tests depend on**. When a pro
   Teardown deletes it, plus any `[QA] CFA run-*` program older than 24 h. The age comes from the run id in the title, because the admin list has no created date.
 - **Deletion** hard-deletes the program, form, submissions, rounds, ratings and jury. It leaves leads, documents, analyses, notifications, S3 objects and email logs. **It is refused if the program has any Jury NDA rows**, so NDA tests only use the long-lived `QA_CFA_NDA_PROGRAM_ID` program.
 - **Fast seeding.** `import_applications_csv` → `moveToSubmitted` (`CfaAdmin.seedSubmittedApplications`).
+- **Program states (P2).**
+  - A new program (`createApplicationProgram`) is a draft: `status=0`, test mode off, an empty unpublished form. The wizard's finalize step then shows "ready to go live" with **Go Live**.
+  - `changeTestMode enable` also sets `status=1`, which hides Go Live. So a draft can't be in test mode, and the wizard never offers Go Live on a test-mode program. The P2 Go Live test switches test mode on in the instant before the Go Live request reaches the server, so the program is never listed.
+  - The backend's `GET application-programs-management/code/{code}` returns any program, live or not. Its `form` is only set once the form is published (`forms.status=1`, done by `makeProgramLive`).
+  - **Close / Re-open Applications** and **Close Program** buttons render for developer and super-admin roles only. The dev QA admin has them.
+  - `reopenProgramApplications` also forces `allow_re_application`, `auto_communication` and `editable_jury_ratings` to 1, even when the admin had them off (observed on dev).
+  - Every wizard button reloads or redirects the page 0.5–1 s after a success. Wait for that reload before the next `goto`, or the `goto` is aborted.
+- **Admin program list tabs** (Draft / Live / Ongoing Evaluation / Closed) are `?conditions=` links. **The search box can't be combined with Live or Ongoing Evaluation**: `table.php` puts the search terms into the same `OR` as those tabs' deadline rule, so every program that matches the search shows under both tabs. The search is also sticky (kept in the PHP session, and an empty term keeps the previous one). `CfaAdmin.listProgramsInTab` works around this.
+- **Rounds.**
+  - `createProgramRound` does **not** enforce unique names, and the round table has no unique index.
+  - Required-field checks are written `trim(($_POST['x']) == "")`, which never trims, so a whitespace-only round title is accepted and stored empty. The same pattern is in most admin handlers.
+  - `deleteRound` is a soft delete (`status=0`); `getProgramRounds` lists live rounds only.
+  - The round editor (`edit_program_round/{id}?section=settings`) is a plain form post (`editRound`), and the page re-renders with a success or error alert.
+- **Form builder.**
+  - Adding one field posts `saveForm` 3–5 times, some of them concurrently, each 500 ms after its trigger. Only the save that carries the new field's title is the one to wait for.
+  - Every `saveForm` writes a version (`spa_admin_logs`). The newest version is "Current" and has no Restore button.
+  - `importFieldsFromForm` logs the form's **previous** fields, not the imported ones. After an import, the "Current" card holds the pre-import fields.
+  - Saved fields can be read from the builder page itself: each is rendered as `addFieldToSection(<section>, "<field JSON>")` (`CfaAdmin.formFields`).
+  - **`/form-management/versions/{formId}` has no login check** (`versions.php` never calls `checkLoggedIn()`). An anonymous GET lists a form's versions with admin names, and an anonymous `restoreForm` POST overwrote a form's fields on dev.
+- **PWA apply page.** When `localStorage['application-{programUuid}']` holds an email, the page opens straight on the application form and skips the lead modal. `ProgramApplyPage.useGuestIdentity` uses this to look at the form without the OTP.
 - **Known product bugs.** Tests for these are marked `test.fail()`. Remove `test.fail()` when the fix ships and the test "unexpectedly passes".
   - **SAN-1878:** "Tentative" on a CFA application always fails. The backend has no `tentative-round` route.
   - **SAN-1886:** the CFA apply API accepts applications to closed, past-deadline or unpublished programs. Enforcement exists only in the PWA.
+  - **Pending filing (found by P2, 2026-10-12):** duplicate round names are accepted, and so are whitespace-only round titles. Each has a `test.fail()` in `tests/cfa/p2-program-setup.spec.ts`.
 - **Excluded from automation:**
   - AI analysis beyond page loads (real LLM spend, no mock)
   - payments

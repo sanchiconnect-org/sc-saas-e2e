@@ -173,6 +173,10 @@ Call for Applications end to end, in `tests/cfa/` (spec FT-006, Linear project "
 - `cfaFlags` holds the five CFA flags, read once per run from the tenant-verification response. Use `test.skip(!cfaFlags.x, 'x is off on this tenant')`. `jury_nda_enabled` is `null` because that response does not expose it.
 - `cfaAdmin.submitAction(pagePath, action, form)` posts the same `submitAction` the admin UI posts, on the saved admin session. It returns the JSON body and throws on `error: true`.
 - `cfaAdmin.seedSubmittedApplications(program, n)` seeds up to 10 submitted applications in a few seconds.
+- `adminPage` is a page on the saved admin session (baseURL `ADMIN_URL`), next to the PWA `page`.
+- The factory is also available in steps: `createBareCfaProgram()` (a draft, never live), `importTemplateFields()`, `editProgramForm()`, `programApplyInfo()`.
+- Read-backs: `cfaAdmin.programRounds()`, `cfaAdmin.formFields()`, `cfaAdmin.formVersionIds()`, and `cfaAdmin.listProgramsInTab()` for the program list's Draft / Live / Ongoing Evaluation / Closed tabs. The admin search box can't be used with the Live and Ongoing Evaluation tabs (see knowledge.md §4).
+- Admin page objects are in `pages/admin/cfa/`: ProgramsTablePage, ProgramWizardPage, RoundEditorPage and FormBuilderPage. `waitForSubmitAction()` in `adminAjax.ts` waits for the page's own submitAction POST.
 
 Give every applicant you create a unique name or a `cfaEmail(runId, …)` address, and never touch another test's rows. A test that changes state for the whole program or a whole round (freeze, close, rounds, test mode) creates its own program with `createCfaProgram()` and deletes it in `afterAll`.
 
