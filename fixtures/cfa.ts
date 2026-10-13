@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { test as base, request as playwrightRequest, type APIRequestContext, type Browser } from '@playwright/test';
+import { test as base, request as playwrightRequest, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import { adminAccount, authFile } from '../config/accounts';
 import { env } from '../config/env';
 
@@ -19,9 +19,11 @@ import { env } from '../config/env';
  *   createApplicationProgram, deleteApplicationProgram   modules/table.php
  *   editProgram, changeTestMode, makeProgramLive         modules/application_management/program.php
  *   importFieldsFromForm                                 modules/form-management/edit-form.php
- *   createProgramRound, import_applications_csv          modules/application_management/submission-application-management.php
+ *   createProgramRound, deleteRound, getProgramRounds,
+ *   import_applications_csv                              modules/application_management/submission-application-management.php
  *   update_rating_criteria                               modules/application_management/edit_program_round.php
  *   moveToSubmitted                                      modules/application_management/draft_applications.php
+ *   (version list, GET)                                  modules/form-management/versions.php
  * Renaming any of these in sc-saas-admin breaks this file.
  */
 
@@ -87,13 +89,14 @@ export function removeCfaRun() {
   fs.rmSync(CFA_RUN_FILE, { force: true });
 }
 
-interface ProgramRecord {
+export interface ProgramRecord {
   id: string;
   title: string;
   runId: string;
 }
 
-function recordProgram(record: ProgramRecord) {
+/** Remembers a program this machine created, so cfa-teardown deletes it even if the test that made it crashes. */
+export function recordProgram(record: ProgramRecord) {
   ensureDir(PROGRAM_RECORDS_DIR);
   fs.writeFileSync(path.join(PROGRAM_RECORDS_DIR, `${record.id}.json`), JSON.stringify(record));
 }
@@ -243,7 +246,34 @@ export interface SeededApplication {
   email: string;
 }
 
-const ADMIN_PROGRAMS_TABLE = '/table/application_programs';
+export interface ProgramRound {
+  id: string;
+  name: string;
+  /** "1" = moves and rejects send no email to the applicant */
+  silentTransfer: string;
+}
+
+export interface FormField {
+  /** index of the builder section the field is in */
+  section: number;
+  key: string;
+  name: string;
+  type: string;
+}
+
+export const ADMIN_PROGRAMS_TABLE = '/table/application_programs';
+
+/**
+ * The status tabs above the admin program list (sc-saas-admin themes/default/html/table.php):
+ * the `conditions` each tab links to.
+ */
+export const PROGRAM_LIST_FILTERS = {
+  draft: 'status:is_equal_to:0',
+  live: 'status:is_equal_to:1,applications_closed:is_equal_to:0,program_closed:is_equal_to:0',
+  ongoingEvaluation: 'status:is_equal_to:1,program_closed:is_equal_to:0,applications_closed:is_equal_to:1',
+  closed: 'status:is_equal_to:1,program_closed:is_equal_to:1',
+} as const;
+export type ProgramListFilter = keyof typeof PROGRAM_LIST_FILTERS;
 
 export class CfaAdmin {
   private adminApi?: APIRequestContext;
@@ -339,7 +369,34 @@ export class CfaAdmin {
    * (Medoo LIKE rule), so search with e.g. "CFA run-", not "[QA] CFA run-".
    */
   async listPrograms(search: string): Promise<{ id: string; title: string }[]> {
-    const html = await this.html(`${ADMIN_PROGRAMS_TABLE}?sortby=id:ASC`, { q: search });
+    return this.programTableRows(`${ADMIN_PROGRAMS_TABLE}?sortby=id:ASC`, search);
+  }
+
+  /**
+   * Programs under one of the status tabs above the admin program list (PROGRAM_LIST_FILTERS)
+   * whose title contains `titleContains`, from the newest 50 rows of that tab.
+   *
+   * The admin search can't be combined with the Live and Ongoing Evaluation tabs: table.php puts
+   * the search terms into the same OR as those tabs' deadline rule, so a program that matches the
+   * search is listed under both tabs whatever its state. And the search is sticky (kept in the PHP
+   * session; an empty term keeps the previous one). So for those two tabs a search that matches
+   * no program is sent, which leaves only the tab's own rule, and the title is matched here.
+   */
+  async listProgramsInTab(filter: ProgramListFilter, titleContains: string): Promise<{ id: string; title: string }[]> {
+    const search =
+      filter === 'live' || filter === 'ongoingEvaluation'
+        ? `qa${Math.random().toString(36).slice(2)}nomatch`
+        : /* "[QA]" would switch the admin search to exact match (see listPrograms). */
+          titleContains.replace(/^\[QA\]\s*/, '');
+    const rows = await this.programTableRows(
+      `${ADMIN_PROGRAMS_TABLE}?sortby=id:DESC&perpage=50&conditions=${PROGRAM_LIST_FILTERS[filter]}`,
+      search,
+    );
+    return rows.filter((r) => r.title.includes(titleContains));
+  }
+
+  private async programTableRows(pagePath: string, search: string): Promise<{ id: string; title: string }[]> {
+    const html = await this.html(pagePath, { q: search });
     const rows: { id: string; title: string }[] = [];
     const rowRe = /<tr record_id="(\d+)"[\s\S]*?\/detail\/application_programs\/\1">([^<]*)<\/a>/g;
     for (let m = rowRe.exec(html); m; m = rowRe.exec(html)) {
@@ -353,6 +410,77 @@ export class CfaAdmin {
     const res = await (await this.backend()).get(`/api/v1/application-programs-management/code/${encodeURIComponent(code)}`);
     if (!res.ok()) return { status: res.status() };
     return { status: res.status(), data: (await res.json())?.data };
+  }
+
+  /* ----- rounds ----- */
+
+  /**
+   * Live rounds of a program (status=1, priority order), as the kanban loads them:
+   * getProgramRounds on the submissions page. Deleted rounds are left out.
+   */
+  async programRounds(program: { id: string; adminSlug: string }): Promise<ProgramRound[]> {
+    const json = await this.submitAction(
+      `/application_management/submission-application-management/${program.id}/${program.adminSlug}`,
+      'getProgramRounds',
+      { programID: program.id },
+    );
+    const rounds = ((json.data as { program_rounds?: Record<string, unknown>[] } | undefined)?.program_rounds ?? []).map((r) => ({
+      id: String(r.id),
+      name: String(r.round_name ?? ''),
+      silentTransfer: String(r.silent_transfer ?? ''),
+    }));
+    return rounds;
+  }
+
+  /** Creates a round (createProgramRound) and returns its id. Throws on error: true. */
+  async createRound(program: { id: string; adminSlug: string }, roundTitle: string): Promise<string> {
+    const round = await this.submitAction(
+      `/application_management/submission-application-management/${program.id}/${program.adminSlug}`,
+      'createProgramRound',
+      { programId: program.id, roundTitle },
+    );
+    const roundId = /edit_program_round\/(\d+)/.exec(round.lastRoundUrl ?? '')?.[1];
+    if (!roundId) throw new Error(`createProgramRound: no round id in ${round.lastRoundUrl}`);
+    return roundId;
+  }
+
+  /** Soft-deletes a round (deleteRound: status=0, deleted_at set). */
+  async deleteRound(program: { id: string; adminSlug: string }, roundId: string) {
+    return this.submitAction(
+      `/application_management/submission-application-management/${program.id}/${program.adminSlug}`,
+      'deleteRound',
+      { roundId },
+    );
+  }
+
+  /* ----- forms ----- */
+
+  /**
+   * The fields of a form, in builder order, read from the form builder page: the builder
+   * renders every saved field as addFieldToSection(<section>, "<field JSON>") in its inline
+   * script (sc-saas-admin themes/default/html/form-management/edit-form.php). Works for any
+   * form id, including the template form; the slug in the URL is not checked.
+   */
+  async formFields(formId: string): Promise<FormField[]> {
+    const html = await this.html(`/form-management/edit-form/${formId}/form`);
+    const fields: FormField[] = [];
+    const re = /addFieldToSection\((\d+), ("(?:[^"\\]|\\.)*")\);/g;
+    for (let m = re.exec(html); m; m = re.exec(html)) {
+      const raw = JSON.parse(m[2]) as string;
+      const f = JSON.parse(raw) as { key?: string; name?: string; type?: string };
+      fields.push({ section: Number(m[1]), key: f.key ?? '', name: f.name ?? '', type: f.type ?? '' });
+    }
+    return fields;
+  }
+
+  /**
+   * Restorable versions of a form, newest first: the spa_admin_logs row ids behind the
+   * Restore buttons of the builder's "Form Version History" panel. The current version has
+   * no Restore button, so it is never in this list.
+   */
+  async formVersionIds(formId: string): Promise<string[]> {
+    const html = await this.html(`/form-management/versions/${formId}`);
+    return [...html.matchAll(/recordId="(\d+)"[^>]*restoreFormBtn/g)].map((m) => m[1]);
   }
 
   /* ----- applications ----- */
@@ -450,6 +578,81 @@ export interface CreateCfaProgramOptions {
   templateFormId?: string;
 }
 
+/** A program as createApplicationProgram leaves it: a draft (status 0, test mode off) with an empty form. */
+export interface BareCfaProgram {
+  id: string;
+  adminSlug: string;
+  title: string;
+  formId: string;
+  /** slug of the form-builder URL /form-management/edit-form/{formId}/{formSlug} */
+  formSlug: string;
+  runId: string;
+}
+
+/** Admin wizard URL of a program: step is edit | application_form | finalize. */
+export function wizardPath(program: { id: string; adminSlug: string }, step: 'edit' | 'application_form' | 'finalize' = 'edit'): string {
+  return `/application_management/program/${program.id}/${step}/${program.adminSlug}`;
+}
+
+/** Form-builder URL of a program's own form, as the wizard's application_form step links to it. */
+export function formBuilderPath(program: { id: string; formId: string; formSlug?: string }): string {
+  return `/form-management/edit-form/${program.formId}/${program.formSlug ?? 'form'}?programId=${program.id}&applicationForms=1`;
+}
+
+/**
+ * createApplicationProgram (table.php) only: a draft program titled "[QA] CFA run-<runId>[ <label>]",
+ * never live and never listed anywhere public. Recorded in .cfa/programs/ for cfa-teardown.
+ */
+export async function createBareCfaProgram(admin: CfaAdmin, options: { runId: string; label?: string }): Promise<BareCfaProgram> {
+  const title = cfaProgramTitle(options.runId, options.label);
+  const created = await admin.submitAction(ADMIN_PROGRAMS_TABLE, 'createApplicationProgram', { programName: title });
+  const editMatch = /\/application_management\/program\/(\d+)\/edit\/([^/?#"]+)/.exec(created.editUrl ?? '');
+  if (!editMatch) throw new Error(`createApplicationProgram: no program id in editUrl ${created.editUrl}`);
+  const [, id, adminSlug] = editMatch;
+  recordProgram({ id, title, runId: options.runId });
+  try {
+    const form = await programForm(admin, { id, adminSlug });
+    return { id, adminSlug, title, ...form, runId: options.runId };
+  } catch (e) {
+    await deleteCfaProgram(admin, id).catch(() => undefined);
+    throw e;
+  }
+}
+
+/** The program's own form id, only exposed as the form-builder link on the wizard's application_form step. */
+export async function programForm(admin: CfaAdmin, program: { id: string; adminSlug: string }): Promise<{ formId: string; formSlug: string }> {
+  const formStep = await admin.html(wizardPath(program, 'application_form'));
+  const formMatch = /form-management\/edit-form\/(\d+)\/([^"'?&\s]+)/.exec(formStep);
+  if (!formMatch) throw new Error(`program ${program.id}: form-builder link not found on the application_form step`);
+  return { formId: formMatch[1], formSlug: formMatch[2] };
+}
+
+/** importFieldsFromForm (edit-form.php): replaces the form's fields with the template form's. */
+export async function importTemplateFields(admin: CfaAdmin, form: { formId: string; formSlug: string }, templateFormId = env.cfa.templateFormId) {
+  if (!templateFormId) throw new Error('QA_CFA_TEMPLATE_FORM_ID not set');
+  return admin.submitAction(`/form-management/edit-form/${form.formId}/${form.formSlug}`, 'importFieldsFromForm', {
+    formId: form.formId,
+    selectedFormId: templateFormId,
+  });
+}
+
+/**
+ * The PWA apply path and backend view of a program. The apply path comes from the wizard's
+ * preview iframe (programs/apply/{code}/{slug}, rendered in every wizard state); the backend
+ * view from GET application-programs-management/code/{code}, whose `form` is only set once
+ * the program's form is published (forms.status=1).
+ */
+export async function programApplyInfo(
+  admin: CfaAdmin,
+  program: { id: string; adminSlug: string },
+): Promise<{ code: string; slug: string; backend: { status: number; data?: Record<string, any> } }> {
+  const wizardHtml = await admin.html(wizardPath(program));
+  const applyMatch = /programs\/apply\/([^/"'?\s]+)\/([^"'?\s<]+)/.exec(wizardHtml);
+  if (!applyMatch) throw new Error(`program ${program.id}: apply link not found on the wizard`);
+  const [, code, slug] = applyMatch;
+  return { code, slug, backend: await admin.programByCode(code) };
+}
+
 /**
  * Creates a test-mode, live CFA program:
  *   createApplicationProgram → importFieldsFromForm (template form) → editProgram →
@@ -469,59 +672,20 @@ export async function createCfaProgram(admin: CfaAdmin, options: CreateCfaProgra
     templateFormId = env.cfa.templateFormId,
   } = options;
   if (!templateFormId) throw new Error('QA_CFA_TEMPLATE_FORM_ID not set');
-  const title = cfaProgramTitle(runId, label);
 
-  const created = await admin.submitAction(ADMIN_PROGRAMS_TABLE, 'createApplicationProgram', { programName: title });
-  const editMatch = /\/application_management\/program\/(\d+)\/edit\/([^/?#"]+)/.exec(created.editUrl ?? '');
-  if (!editMatch) throw new Error(`createApplicationProgram: no program id in editUrl ${created.editUrl}`);
-  const [, id, adminSlug] = editMatch;
-  recordProgram({ id, title, runId });
+  const bare = await createBareCfaProgram(admin, { runId, label });
+  const { id, adminSlug, title, formId } = bare;
 
   try {
-    const wizard = `/application_management/program/${id}/edit/${adminSlug}`;
+    const wizard = wizardPath(bare);
 
-    /* The program's own form id is only exposed as the form-builder link on the wizard's form step. */
-    const formStep = await admin.html(`/application_management/program/${id}/application_form/${adminSlug}`);
-    const formMatch = /form-management\/edit-form\/(\d+)\/([^"'?&\s]+)/.exec(formStep);
-    if (!formMatch) throw new Error(`program ${id}: form-builder link not found on the application_form step`);
-    const [, formId, formSlug] = formMatch;
+    await importTemplateFields(admin, bare, templateFormId);
 
-    await admin.submitAction(`/form-management/edit-form/${formId}/${formSlug}`, 'importFieldsFromForm', {
-      formId,
-      selectedFormId: templateFormId,
-    });
-
-    /* editProgram reads every one of these keys without isset(), so all are sent. */
-    await admin.submitAction(wizard, 'editProgram', {
-      program_title: title,
-      short_description: `Automated E2E program for run ${runId}. Safe to delete.`,
-      description: '',
-      application_closed_date: '',
-      allow_re_application: allowReapplication ? '1' : '0',
-      re_application_duration_type: allowReapplication ? 'immediate' : '',
-      re_application_duration: '',
-      mobile_number_field: '0',
-      is_pitch_document_required: '0',
-      company_name_field: '0',
-      bypass_otp_verification: bypassOtp ? '1' : '0',
-      is_video_required: '0',
-      is_document_required: '0',
-      is_payment_required: '0',
-      membership_stakeholder_type: '',
-      content_sections: '[]',
-      faq_sections: '[]',
-    });
+    await admin.submitAction(wizard, 'editProgram', editProgramForm({ title, runId, bypassOtp, allowReapplication }));
 
     const roundIds: string[] = [];
     for (let n = 1; n <= rounds; n++) {
-      const round = await admin.submitAction(
-        `/application_management/submission-application-management/${id}/${adminSlug}`,
-        'createProgramRound',
-        { programId: id, roundTitle: `[QA] R${n}-${runId}` },
-      );
-      const roundId = /edit_program_round\/(\d+)/.exec(round.lastRoundUrl ?? '')?.[1];
-      if (!roundId) throw new Error(`createProgramRound: no round id in ${round.lastRoundUrl}`);
-      roundIds.push(roundId);
+      roundIds.push(await admin.createRound(bare, `[QA] R${n}-${runId}`));
     }
     if (ratingCriteriaOnLastRound && roundIds.length) {
       const last = roundIds[roundIds.length - 1];
@@ -536,16 +700,10 @@ export async function createCfaProgram(admin: CfaAdmin, options: CreateCfaProgra
     await admin.submitAction(wizard, 'changeTestMode', { action: 'enable', programId: id });
     await admin.submitAction(wizard, 'makeProgramLive', { programId: id });
 
-    /* The wizard's Preview link carries the PWA apply path: programs/apply/{code}/{slug}. */
-    const wizardHtml = await admin.html(wizard);
-    const applyMatch = /programs\/apply\/([^/"'?\s]+)\/([^"'?\s<]+)/.exec(wizardHtml);
-    if (!applyMatch) throw new Error(`program ${id}: apply link not found on the wizard`);
-    const [, code, slug] = applyMatch;
-
-    const lookup = await admin.programByCode(code);
-    const data = lookup.data;
+    const { code, slug, backend } = await programApplyInfo(admin, bare);
+    const data = backend.data;
     if (!data?.uuid || !data?.form?.uuid) {
-      throw new Error(`program ${id}: backend GET application-programs-management/code/${code} returned ${lookup.status} without uuid/form`);
+      throw new Error(`program ${id}: backend GET application-programs-management/code/${code} returned ${backend.status} without uuid/form`);
     }
     if (data.testModeEnabled !== true || data.status !== true) {
       throw new Error(`program ${id}: expected test mode on and live, backend says testModeEnabled=${data.testModeEnabled} status=${data.status}`);
@@ -557,6 +715,37 @@ export async function createCfaProgram(admin: CfaAdmin, options: CreateCfaProgra
     await deleteCfaProgram(admin, id).catch(() => undefined);
     throw e;
   }
+}
+
+/**
+ * The editProgram POST body. editProgram (program.php) reads every one of these keys without
+ * isset(), so all are sent; `overrides` replaces individual keys.
+ */
+export function editProgramForm(
+  input: { title: string; runId: string; bypassOtp?: boolean; allowReapplication?: boolean },
+  overrides: Record<string, string> = {},
+): Record<string, string> {
+  const { title, runId, bypassOtp = false, allowReapplication = true } = input;
+  return {
+    program_title: title,
+    short_description: `Automated E2E program for run ${runId}. Safe to delete.`,
+    description: '',
+    application_closed_date: '',
+    allow_re_application: allowReapplication ? '1' : '0',
+    re_application_duration_type: allowReapplication ? 'immediate' : '',
+    re_application_duration: '',
+    mobile_number_field: '0',
+    is_pitch_document_required: '0',
+    company_name_field: '0',
+    bypass_otp_verification: bypassOtp ? '1' : '0',
+    is_video_required: '0',
+    is_document_required: '0',
+    is_payment_required: '0',
+    membership_stakeholder_type: '',
+    content_sections: '[]',
+    faq_sections: '[]',
+    ...overrides,
+  };
 }
 
 /** Deletes a program (deleteApplicationProgram) and checks the admin wizard no longer opens it. */
@@ -620,6 +809,8 @@ type CfaTestFixtures = {
   cfaFlags: CfaFlags;
   /** Skips every CFA test when cfa-setup recorded a skip reason (missing secret, CFA off). */
   cfaGate: void;
+  /** A page in its own browser context on the saved admin session, baseURL = ADMIN_URL. */
+  adminPage: Page;
 };
 
 /**
@@ -657,6 +848,14 @@ export const test = base.extend<CfaTestFixtures, CfaWorkerFixtures>({
   cfaFlags: async ({ cfaRun }, use) => {
     if (!cfaRun.flags) throw new Error('cfa-setup recorded no flags');
     await use(cfaRun.flags);
+  },
+  adminPage: async ({ browser }, use) => {
+    const context = await browser.newContext({ storageState: authFile('admin'), baseURL: env.adminUrl });
+    try {
+      await use(await context.newPage());
+    } finally {
+      await context.close();
+    }
   },
 });
 
