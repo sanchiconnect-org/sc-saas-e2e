@@ -696,7 +696,12 @@ export interface CfaFieldSpec {
   name: string;
   type: CfaFieldType;
   required?: boolean;
+  /** Overrides the field's visibility rule (default: always shown, as the builder stores it once edited). */
+  visiblity?: { show: string | null; field: string | null; condition: string | null; value: string | null };
 }
+
+/** The visibility rule a field gets when it is dropped into the builder and its properties are never saved (edit-form.php default). */
+export const BUILDER_DEFAULT_VISIBILITY = { show: 'show', field: null, condition: 'is', value: null };
 
 export interface CfaFormSection {
   key: string;
@@ -742,7 +747,7 @@ export function formFieldJson(spec: CfaFieldSpec): string {
     sample_file_url: '',
     /* What the builder stores once a field's properties are saved. A rule left at field=null with
        condition "is" makes the PWA hide the field (isFieldVisibleCommon compares form[null] === null). */
-    visiblity: { show: 'show', field: 'none', condition: 'none', value: 'none' },
+    visiblity: spec.visiblity ?? { show: 'show', field: 'none', condition: 'none', value: 'none' },
     use_as_filter: '0',
     divider: { margin: '20', add_border: '1', border_size: '1', border_style: 'solid', border_color: 'ccc' },
   });

@@ -16,7 +16,7 @@
 import * as path from 'path';
 import { qaOtp } from '../../config/accounts';
 import { env } from '../../config/env';
-import { cfaEmail, deleteCfaProgram, expect, test, type CfaProgram, type CfaRun } from '../../fixtures/cfa';
+import { BUILDER_DEFAULT_VISIBILITY, cfaEmail, createCfaProgram, deleteCfaProgram, expect, test, type CfaProgram, type CfaRun } from '../../fixtures/cfa';
 import { newestEmailLogRowId, waitForNewEmailLogRow } from '../../fixtures/email-log';
 import { type Page, type Request } from '@playwright/test';
 import { ApplicationStatusPage } from '../../pages/frontend/cfa/ApplicationStatusPage';
@@ -365,5 +365,43 @@ test.describe('CFA P3: guest applicants on a bypass-OTP program', { tag: TAGS },
       await cfaAdmin.setRoundFreeze(program, r2Id, false);
     }
     expect(await cfaAdmin.moveToRound(program, [seeded.id], r1Id), 'unfrozen, the move goes through').toMatchObject({ success: true });
+  });
+});
+
+test.describe('CFA P3: a builder-default field on the apply form', { tag: TAGS }, () => {
+  test('a field whose properties were never edited in the builder is shown to the applicant', async ({ cfaAdmin, cfaRun, page }) => {
+    /* Bug pending filing. A field dropped into the builder gets the default visibility rule
+       {show:"show", field:null, condition:"is", value:null} (sc-saas-admin
+       modules/form-management/edit-form.php, default field data). Until someone opens and saves
+       its properties panel, that rule stays. The PWA's isFieldVisibleCommon (sc-saas-frontend
+       shared/utils/form.utils.ts) then evaluates form[null] === null, which is false, so the
+       field is hidden from applicants. The dev "[QA] E2E template form" field ("Enter Field
+       Title") is exactly such a field and never renders on the PWA. */
+    test.fail(true, 'bug pending filing: builder-default visibility hides the field on the PWA');
+    test.setTimeout(120_000);
+    const program = await createCfaProgram(cfaAdmin, { runId: cfaRun.runId, label: `p3-default-vis-${rand()}`, rounds: 0, ratingCriteriaOnLastRound: false });
+    try {
+      const plain = { key: 'field_qaP3Plain', name: 'QA plain field' };
+      const untouched = { key: 'field_qaP3Untouched', name: 'QA untouched field' };
+      await cfaAdmin.saveFormFields(program.formId, [
+        {
+          key: 'section_qaP3Vis',
+          name: 'QA visibility',
+          fields: [
+            { ...plain, type: 'text_field' },
+            { ...untouched, type: 'text_field', visiblity: BUILDER_DEFAULT_VISIBILITY },
+          ],
+        },
+      ]);
+
+      const apply = new ProgramApplyPage(page);
+      await apply.useGuestIdentity(program.uuid, { email: cfaEmail(cfaRun.runId, `p3vis_${rand()}`), name: 'QA p3vis' });
+      await apply.goto(program.code, program.slug);
+      /* The control field renders, so the form itself loaded. */
+      await expect(apply.field(plain.key)).toBeVisible({ timeout: 30_000 });
+      await expect(apply.field(untouched.key)).toBeVisible();
+    } finally {
+      await deleteCfaProgram(cfaAdmin, program.id);
+    }
   });
 });
