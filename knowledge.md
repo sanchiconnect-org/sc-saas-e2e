@@ -1,6 +1,6 @@
 # sc-saas-e2e — Knowledge (as-is)
 
-Last updated: 2026-10-12
+Last updated: 2026-10-13
 Source: building and running this suite against development (`thub.sanchidev.in`) and staging (`demo.sanchiapp.com`) on 2026-10-12, plus code reads in the product repos (paths cited). Each fact below was observed in a real run, or read in code where marked `[code]`.
 
 This file records **what the product does that the tests depend on**. When a product repo changes one of these, the matching test breaks. That makes this the e2e repo's "contracts consumed" list.
@@ -86,10 +86,31 @@ This file records **what the product does that the tests depend on**. When a pro
   - Saved fields can be read from the builder page itself: each is rendered as `addFieldToSection(<section>, "<field JSON>")` (`CfaAdmin.formFields`).
   - **`/form-management/versions/{formId}` has no login check** (`versions.php` never calls `checkLoggedIn()`). An anonymous GET lists a form's versions with admin names, and an anonymous `restoreForm` POST overwrote a form's fields on dev.
 - **PWA apply page.** When `localStorage['application-{programUuid}']` holds an email, the page opens straight on the application form and skips the lead modal. `ProgramApplyPage.useGuestIdentity` uses this to look at the form without the OTP.
+- **Applicant flow (P3).**
+  - **Apply** opens a modal (name, email; company and mobile only when the program asks for them). The modal upserts a lead as you type (`public/application-program-leads/upsert`, debounced ~1.5 s).
+  - With OTP required, "Send Otp" posts `otp_verifications/send`, and "Submit" posts `/verify` with `md5(code)`. With `bypass_otp_verification` on, or for a **logged-in member**, the modal has no OTP step and reads "Submit" from the start. Members still get the modal, pre-filled from their profile.
+  - On Submit the identity goes to `localStorage['application-{uuid}']`. A guest gets no user and no session, and its save carries no `userId`. A member's save carries its user id.
+  - The form saves a draft (`submitted=false`) **as soon as it opens**, then every `autoSaveTimer` seconds (60 on the dev forms; 20 when unset). "Save as Draft" saves immediately. Reopening the page in the same browser fetches the draft by email and restores the answers.
+  - "Submit Application" is disabled while a required field is empty. The red "n field(s) are not complete yet" badge marks the empty fields ("This field is required"). On submit, an "Are you sure?" dialog appears, then the save with `submitted=true`, then `POST application-programs-management/{uuid}/{submissionId}/apply`. The applicant then sees "Your details have been successfully submitted."
+  - Apply creates the application's round row with **no round**. The admin's first move puts it in a round.
+  - Guest file uploads work (`forms-management/submission/{formUUID}/upload-file`).
+  - The `sc_cfa_*@yopmail.com` fixed OTP has been live on dev since 2026-10-13. Before that, `/verify` answered 409 "Invalid one time password" while `sc_reg_*` worked.
+- **A field's visibility rule can hide it on the PWA.** The PWA shows a field only when its rule's `show` is empty/"null", its `field` is "none", or the rule matches. The builder's default rule for a new field (`{show:"show", field:null, condition:"is"}`, `edit-form.php`) never matches, so a field whose properties panel was never saved is **hidden** (known-failing test, bug pending filing). The dev `[QA] E2E template form` has one such field ("Enter Field Title"), so the per-run program's form shows **no fields** on the PWA. P3 throwaways get their own form via `CfaAdmin.saveFormFields`, whose fields use `field:"none"`.
+- **Status view.** A returning applicant's page loads `POST application-programs-management/{uuid}/check_application_status/{email}/details` (`currentRoundId`, `isRejected`, `canReapplyNow`, …). The round tabs render only with `application_management_round_status_updates` on (off on dev), so with the flag off only the data can be checked. `?autoStatusCheck=true` only fills the identity for a logged-in member.
+- **Re-apply after rejection (SAN-352).** A rejected applicant sees "Your previous application was rejected" and **Reapply Now**. That opens a blank form, whose saves carry `submissionId` = the rejected one. The backend edits that same row and the apply resets it to Submitted. No new row appears.
+- **Resubmission.** `sendForResubmission` (posted to the detail page) mails `resubmit-application`, sets `forms_submissions.submitted=0` and, while the application is in no round yet, **deletes its round row**. The applicant's next submit re-applies on the same submission, which creates a new round row and so a new detail id.
+- **Freeze.** `freeze_applications` only stops an application being moved, rejected or marked tentative out of the frozen round. The admin checks this before calling the backend, and the backend checks again (`APPLICATION_FROZEN`). It does **not** stop the applicant: a submitted application has no editable form anyway. Turning freeze on needs the Digital ID Card module (`startup_recognition_enabled`).
+- **Admin views of an application.**
+  - Table view: `submission-application-management-tableview/{id}/{slug}?perpage=100`. Each row shows a "Registered as …" badge when the applicant's **email** belongs to a member account; this is an email match, not `user_id`. A row shows the email only when it has no company name.
+  - Detail page `/application-submission-detail/{id}` takes the application's **round row id** (from the table view), not the submission id. Answers are in `.dataRecord` → `.fieldType` / `.fieldValue`, and a file answer is a "View File (n)" button linking to the S3 object.
+  - `CfaAdmin.submittedApplications` reads the table view.
+- **Program lists for a member.** The member `/call-for-applications` list hides test-mode programs, like the public one. **My Applications** (`POST application-programs-management/applied/{email}`) does list them: `getAllPrograms(includeTestMode=false)` skips the test-mode filter (the parameter name is inverted).
+- **Closed program (D9).** On a closed program the Apply button is disabled and its tooltip reads "We are no longer accepting new applications". The program is listed under **Past**, not Active (the default section). This was checked read-only against a real closed dev program. The `[QA] CFA Closed (do not delete)` program does **not** exist on dev yet: `QA_CFA_CLOSED_PROGRAM_PATH` points at no program, so the D9 tests skip.
 - **Known product bugs.** Tests for these are marked `test.fail()`. Remove `test.fail()` when the fix ships and the test "unexpectedly passes".
   - **SAN-1878:** "Tentative" on a CFA application always fails. The backend has no `tentative-round` route.
   - **SAN-1886:** the CFA apply API accepts applications to closed, past-deadline or unpublished programs. Enforcement exists only in the PWA.
   - **SAN-1890:** whitespace-only required fields pass. `trim(($_POST['x']) == "")` trims the boolean; ~975 occurrences in sc-saas-admin. Known-failing: the whitespace round-title test.
+  - **Not filed yet (P3):** a builder field whose visibility rule was never edited is hidden on the PWA apply form (see "A field's visibility rule" above). Known-failing test in `p3-apply-guest.spec.ts`.
   - Round names are **not** unique per program. That's a product decision, not a bug (FT-006 D11).
 - **Excluded from automation:**
   - AI analysis beyond page loads (real LLM spend, no mock)

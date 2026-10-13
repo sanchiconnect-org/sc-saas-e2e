@@ -177,6 +177,13 @@ Call for Applications end to end, in `tests/cfa/` (spec FT-006, Linear project "
 - The factory is also available in steps: `createBareCfaProgram()` (a draft, never live), `importTemplateFields()`, `editProgramForm()`, `programApplyInfo()`.
 - Read-backs: `cfaAdmin.programRounds()`, `cfaAdmin.formFields()`, `cfaAdmin.formVersionIds()`, and `cfaAdmin.listProgramsInTab()` for the program list's Draft / Live / Ongoing Evaluation / Closed tabs. The admin search box can't be used with the Live and Ongoing Evaluation tabs (see knowledge.md §4).
 - Admin page objects are in `pages/admin/cfa/`: ProgramsTablePage, ProgramWizardPage, RoundEditorPage and FormBuilderPage. `waitForSubmitAction()` in `adminAjax.ts` waits for the page's own submitAction POST.
+- Applicant-side helpers (P3):
+  - `cfaAdmin.saveFormFields(formId, sections)` gives a throwaway program its own form. `tests/cfa/p3-helpers.ts` has the P3 form and `createP3Program()`.
+  - Review actions: `cfaAdmin.moveToRound()`, `rejectApplications()`, `sendForResubmission()`, `setRoundFreeze()`.
+  - `cfaAdmin.submittedApplications()` reads the admin table view. Its `detailId` is what `/application-submission-detail/{id}` takes.
+  - PWA page objects in `pages/frontend/cfa/`: ProgramApplyPage, GuestLeadModal, ApplicationStatusPage and CallForApplicationsPage.
+  - `ProgramApplyPage.submitApplication()` returns the final save and the apply status, and backs off once on a 429.
+- Rate limits: the OTP routes and the CFA apply route allow 10 requests per 60 s. Only one test sends an OTP. Applicants that only need to exist are CSV-seeded rather than applied through the PWA.
 
 Give every applicant you create a unique name or a `cfaEmail(runId, …)` address, and never touch another test's rows. A test that changes state for the whole program or a whole round (freeze, close, rounds, test mode) creates its own program with `createCfaProgram()` and deletes it in `afterAll`.
 
