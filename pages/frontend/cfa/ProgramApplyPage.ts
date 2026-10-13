@@ -145,7 +145,11 @@ export class ProgramApplyPage {
    * the action that opens the form (the modal's Submit/OTP verify), then pass it to formReady().
    */
   firstSave(formUUID: string): Promise<Response> {
-    return this.page.waitForResponse((r) => isFormSave(r, formUUID), { timeout: 45_000 });
+    const save = this.page.waitForResponse((r) => isFormSave(r, formUUID), { timeout: 45_000 });
+    /* Marks the promise handled, so a test that skips or fails before formReady() doesn't also
+       report "waitForResponse: Test ended"; formReady() still sees the rejection. */
+    save.catch(() => undefined);
+    return save;
   }
 
   /** Waits for the form to show and its first save to succeed; returns that save. */
