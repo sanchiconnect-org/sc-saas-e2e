@@ -168,8 +168,8 @@ test.describe('CFA P2: rounds', { tag: TAGS }, () => {
   test('a round with a whitespace-only title is refused', async ({ cfaAdmin }) => {
     /* createProgramRound checks `trim(($_POST['roundTitle']) == "")`: the parentheses make it
        trim(bool), so "   " passes the required check and clean() then stores an empty round
-       name (submission-application-management.php:286). Known-failing: bug pending filing. */
-    test.fail(true, 'createProgramRound accepts a whitespace-only round title: bug pending filing');
+       name (submission-application-management.php:286). Known-failing until SAN-1890. */
+    test.fail(true, 'createProgramRound accepts a whitespace-only round title: SAN-1890');
     let createdId: string | undefined;
     try {
       await expect(
@@ -183,22 +183,20 @@ test.describe('CFA P2: rounds', { tag: TAGS }, () => {
     }
   });
 
-  test('a second round with the same name is refused', async ({ cfaAdmin }) => {
-    /* FT-006 P2 expects round names to be unique per program. createProgramRound in
-       sc-saas-admin (submission-application-management.php:272, and the -tableview copy) has no
-       duplicate check and the round entity has no unique index, so the duplicate is accepted.
-       Known-failing: bug pending filing (or a spec correction, pending the user's call). */
-    test.fail(true, 'createProgramRound accepts a duplicate round name: bug pending filing');
-    let duplicateId: string | undefined;
+  test('a second round with the same name is allowed', async ({ cfaAdmin }) => {
+    /* Round names are NOT unique per program, by product decision (2026-10-12, FT-006 spec
+       correction). createProgramRound has no duplicate check and the round entity no unique
+       index. Rounds are told apart by id, so a duplicate name is a separate round. */
+    const dupName = `[QA] P2 dup round ${rand()}`;
+    const created: string[] = [];
     try {
-      await expect(
-        cfaAdmin.createRound(program, roundName).then((id) => {
-          duplicateId = id;
-          return id;
-        }),
-      ).rejects.toThrow(/createProgramRound failed/);
+      created.push(await cfaAdmin.createRound(program, dupName));
+      created.push(await cfaAdmin.createRound(program, dupName));
+      expect(created[0]).not.toBe(created[1]);
+      const rounds = await cfaAdmin.programRounds(program);
+      expect(rounds.filter((r) => r.name === dupName).map((r) => r.id).sort()).toEqual([...created].sort());
     } finally {
-      if (duplicateId) await cfaAdmin.deleteRound(program, duplicateId);
+      for (const id of created) await cfaAdmin.deleteRound(program, id);
     }
   });
 

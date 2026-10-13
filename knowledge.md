@@ -89,7 +89,8 @@ This file records **what the product does that the tests depend on**. When a pro
 - **Known product bugs.** Tests for these are marked `test.fail()`. Remove `test.fail()` when the fix ships and the test "unexpectedly passes".
   - **SAN-1878:** "Tentative" on a CFA application always fails. The backend has no `tentative-round` route.
   - **SAN-1886:** the CFA apply API accepts applications to closed, past-deadline or unpublished programs. Enforcement exists only in the PWA.
-  - **Pending filing (found by P2, 2026-10-12):** duplicate round names are accepted, and so are whitespace-only round titles. Each has a `test.fail()` in `tests/cfa/p2-program-setup.spec.ts`.
+  - **SAN-1890:** whitespace-only required fields pass. `trim(($_POST['x']) == "")` trims the boolean; ~975 occurrences in sc-saas-admin. Known-failing: the whitespace round-title test.
+  - Round names are **not** unique per program. That's a product decision, not a bug (FT-006 D11).
 - **Excluded from automation:**
   - AI analysis beyond page loads (real LLM spend, no mock)
   - payments
@@ -117,3 +118,8 @@ SAN-1613 (nightly reset) is the cleanup plan.
 | SAN-1877 | backend | Wildcard support in `QA_FIXED_OTP_EMAILS` | Done |
 | SAN-1878 | backend | CFA Tentative has no backend route | Todo (Sandeep) |
 | SAN-1886 | backend | CFA apply ignores closed, deadline and unpublished state | Todo (Sandeep) |
+| SAN-1887 | admin | **form-management/versions.php has no login check: anonymous read and restore (overwrite) of any form** | Todo (Sandeep), Urgent |
+| SAN-1888 | admin | Re-opening applications forces allow_re_application / auto_communication / editable_jury_ratings ON | Todo (Sandeep) |
+| SAN-1889 | admin | Program-list search ignored on Live / Ongoing tabs; last search sticks in the session | Todo (Sandeep) |
+| SAN-1890 | admin | `trim(($_POST['x']) == "")` never trims, so whitespace-only values pass (~975 lines) | Todo (Sandeep) |
+| SAN-1891 | admin | After "import fields", the Current version card shows the pre-import fields | Todo (Sandeep) |
