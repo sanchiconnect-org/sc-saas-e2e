@@ -46,6 +46,13 @@ export const env = {
   get spokeUrl(): string | undefined {
     return process.env.SPOKE_URL?.replace(/\/+$/, '') || undefined;
   },
+  /**
+   * Tenants cockpit (verify_tenant / tenant-settings / resolve-domain). Optional override via
+   * COCKPIT_URL; defaults are in config/tenant-contract.ts by E2E_ENV (SAN-1609).
+   */
+  get cockpitUrl(): string | undefined {
+    return process.env.COCKPIT_URL?.replace(/\/+$/, '') || undefined;
+  },
   /** CFA regression suite settings (FT-006). All optional: what needs a missing one skips. */
   cfa: {
     /** Admin id of the hand-made "[QA] E2E template form" whose fields every CFA program imports. Required by the cfa project. */
