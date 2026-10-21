@@ -13,6 +13,7 @@ This file records **what the product does that the tests depend on**. When a pro
   - Cockpits: dev `https://api.tenants.sanchidev.in`; staging and production `https://api.tenants.sanchiconnect.com`. The old `api-dev.tenants.sanchiconnect.com` is dead (502).
   - The cockpit only resolves hostnames on its **registered-domains list** (SAN-557); any other host gets `403 Direct access is not allowed` and the PWA renders blank. `aaf.thub.sanchidev.in` is not registered on dev, which is why journey 8 needs `SPOKE_URL`.
   - `features` does **not** include `jury_nda_enabled` or `single_session_login_enabled` `[code: sanchiconnect-saas-tenants global.service.ts]`.
+  - **Same builder as verify_tenant.** `GET …/public/global/verify_tenant/{hostname}` returns the same 9-key `data` shape (users 18, features 216). `GET …/public/global/tenant-settings/{hostname}` returns `{ features, settings, subscription_active, subscription_active_message, maintenance_mode }`. Black-box checks: `tests/api/tenant-contracts.spec.ts` (SAN-1609). Public responses must not carry secret values; `factacy_api_key` still leaks on tenant-settings (SAN-1941).
 - **Login settings the suite relies on.** The QA tenants have email OTP on, mobile OTP off, SSO off. The email field on `/auth/login` only renders when `email_otp_verification` is on.
 - **OTP.**
   - The PWA and the seed send `md5(code)` to verify endpoints. The backend compares against the stored hash without re-hashing `[code: verifications.service.ts]`.
