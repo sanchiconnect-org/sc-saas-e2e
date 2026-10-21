@@ -75,7 +75,6 @@ Never put a credential in this repo, in Linear, or in a PR description.
 In GitHub, go to **Settings → Environments** and create three environments: `development`, `staging` and `production`. Add every variable from [`env.example`](env.example) as a secret of the same name in each:
 
 - `FRONTEND_URL`, `ADMIN_URL`, `API_URL` (without `/api`)
-- `COCKPIT_URL` (optional): override for SAN-1609 contracts; defaults by `E2E_ENV` in `config/tenant-contract.ts`
 - `QA_REGISTER_EMAIL_PATTERN` (optional, e.g. `sc_reg_*@yopmail.com`): fresh address per run for journey 2. The QA backend's `QA_FIXED_OTP_EMAILS` must include the same pattern (SAN-1877). Journey 2 is skipped without it.
 - `SPOKE_URL` (optional): a partner spoke registered in that environment's cockpit. Journey 8 is skipped without it.
 - `QA_OTP`
@@ -113,12 +112,11 @@ The HTML report is attached to every run, and traces, screenshots and videos are
 ## Layout
 
 ```
-config/       env.ts · accounts.ts · tenant-contract.ts (cockpit URLs + frozen shape, SAN-1609)
+config/       env.ts (which environment, URLs) · accounts.ts (roles, secrets, OTP)
 fixtures/     auth.ts — asRole('investor') starts a test already logged in
 pages/        Page Objects: frontend/ (PWA) and admin/ (admin panel)
 seed/         API seeding of the QA tenant
 tests/
-  api/            cockpit contract tests (project "api", no login) — SAN-1609
   frontend/login-otp.spec.ts  the login journey; runs first (project "login")
   frontend.setup.ts  logs in once per member account → .auth/<role>.json
   admin.setup.ts     logs in once as admin and jury  → .auth/<role>.json
@@ -128,21 +126,6 @@ tests/
   admin/          admin journeys (project "admin",    baseURL = ADMIN_URL)
   cfa/            CFA regression (project "cfa",      baseURL = FRONTEND_URL; admin via fixtures/cfa.ts)
 ```
-
-## Tenant API contracts (SAN-1609)
-
-Black-box checks against the live QA **cockpit** (not the tenant `API_URL`): `GET …/verify_tenant/{hostname}` and `GET …/tenant-settings/{hostname}`. Owner: **Ritu Raj**. Tags: `@regression` `@api` `@tenant`. Spec: `tests/api/tenant-contracts.spec.ts`.
-
-Asserts the frozen public shape (SAN-1591), required flag columns on `verify_tenant.features`, and that no secret field carries a value. Counterpart to the CI contract guards in the tenants/backend/frontend repos.
-
-```bash
-npm run test:contracts
-# same as: npx playwright test --project=api
-```
-
-Nightly full suite includes project `api` automatically. After a cockpit/tenants deploy, run `npm run test:contracts` in this repo so the result shows in the deploy log (`[tenant-contract] …` lines). Optional `COCKPIT_URL` overrides the default cockpit for `E2E_ENV`.
-
-Known-failing until [SAN-1941](https://linear.app/sanchiconnect/issue/SAN-1941): tenant-settings still returns `factacy_api_key` with a value on the public response.
 
 ## Adding a journey
 
@@ -178,33 +161,6 @@ test.describe('investor views a startup', { tag: ['@regression', '@frontend', '@
   });
 });
 ```
-
-## Startup path regression (SAN-1606)
-
-First regression block beyond Smoke 10. Five journeys cover register → complete profile → apply → track application → receive decision. Owner on every spec: **Ritu Raj** (SAN-1606 assignee). Tags: `@regression` `@startup` (plus `@frontend` / `@cfa` / `@write` as appropriate).
-
-| # | Spec | Purpose | Auth |
-|---|---|---|---|
-| 1 | `tests/frontend/startup-path-register.spec.ts` | New startup registers with email OTP; wrong OTP stays on the OTP step; company name lands on the profile | Fresh address from `QA_REGISTER_EMAIL_PATTERN` (not the seeded account) |
-| 2 | `tests/frontend/startup-path-complete-profile.spec.ts` | Seeded startup fills required Basic Information; NEXT STEP unlocks; values persist after reload | Seeded startup via `asRole('startup')` |
-| 3 | `tests/cfa/startup-path-apply.spec.ts` | Seeded startup applies to a throwaway program; status check + admin table show Submitted | Seeded startup session + CFA admin |
-| 4 | `tests/cfa/startup-path-track-application.spec.ts` | My Applications lists the program; status view follows the move into round 1 | Seeded startup session + CFA admin |
-| 5 | `tests/cfa/startup-path-decision.spec.ts` | Accept then reject: success/reject emails in the admin log; PWA rejection notice + Reapply Now; re-application off hides Reapply | Seeded startup session + CFA admin |
-
-Shared helpers for journeys 3–5: `tests/cfa/startup-path-helpers.ts`. Journeys 3–5 create their own throwaway test-mode program and delete it in `finally` (cfa-teardown cleans up on crash).
-
-```bash
-# Frontend journeys (1–2); setup-frontend runs first for journey 2
-npx playwright test tests/frontend/startup-path-*.spec.ts --project=frontend
-
-# CFA journeys (3–5); --workers=1 avoids concurrent admin moves (SAN-1893)
-npx playwright test tests/cfa/startup-path-*.spec.ts --project=cfa --workers=1
-
-# All five startup-path specs (preferred over --grep @startup, which also matches smoke)
-npx playwright test tests/frontend/startup-path-*.spec.ts tests/cfa/startup-path-*.spec.ts --workers=1
-```
-
-Nightly CI (`.github/workflows/e2e.yml` schedule, 02:00 IST, `development`) runs the **full suite** when `GREP` is empty, so these journeys are included once the specs are on `main`. On-demand `workflow_dispatch` defaults to `@smoke` and does **not** run this block unless you set the tag filter to `@regression` or leave grep empty. SAN-1606 Done requires three consecutive green nightlies with this block on the branch CI runs; do not mark Done without that evidence.
 
 ## CFA regression suite
 

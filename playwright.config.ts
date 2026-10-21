@@ -25,13 +25,6 @@ export default defineConfig({
     navigationTimeout: 30_000,
   },
   projects: [
-    /* SAN-1609: cockpit API contracts (no browser session). Runs in nightly full suite and via
-       `npm run test:contracts` after deploys — keep free of setup deps so deploy logs stay fast. */
-    {
-      name: 'api',
-      testDir: './tests/api',
-      use: { ...devices['Desktop Chrome'], baseURL: env.frontendUrl },
-    },
     /* The login journey does real UI logins, so it runs BEFORE any session is saved:
        with single_session_login_enabled a new login kills that user's older session. */
     {

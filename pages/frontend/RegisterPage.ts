@@ -46,13 +46,11 @@ export class RegisterPage {
     /* The OTP boxes appear immediately, but the wizard sends the email OTP ~1s later
        (register.component.ts sendOTP('email') after 1000ms). Verifying before that
        send lands returns 404 VERIFICATION_NOT_FOUND, so wait for the send. */
-    /* Wizard delays sendOTP ~1s after Continue; allow headroom for slow QA tenants. */
     const otpSent = this.page.waitForResponse(
       (r) =>
         r.url().includes('/public/otp_verifications/send') &&
         r.request().method() === 'POST' &&
         (r.request().postDataJSON()?.type ?? '') === 'email',
-      { timeout: 30_000 },
     );
     await this.continueButton.click();
     const sent = await otpSent;

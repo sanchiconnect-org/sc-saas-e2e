@@ -32,7 +32,6 @@ jobs:
       FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
       ADMIN_URL: ${{ secrets.ADMIN_URL }}
       API_URL: ${{ secrets.API_URL }}
-      COCKPIT_URL: ${{ secrets.COCKPIT_URL }}
       SPOKE_URL: ${{ secrets.SPOKE_URL }}
       QA_OTP: ${{ secrets.QA_OTP }}
       QA_STARTUP_EMAIL: ${{ secrets.QA_STARTUP_EMAIL }}
