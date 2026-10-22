@@ -166,10 +166,8 @@ test.describe('CFA P2: rounds', { tag: TAGS }, () => {
   });
 
   test('a round with a whitespace-only title is refused', async ({ cfaAdmin }) => {
-    /* createProgramRound checks `trim(($_POST['roundTitle']) == "")`: the parentheses make it
-       trim(bool), so "   " passes the required check and clean() then stores an empty round
-       name (submission-application-management.php:286). Known-failing until SAN-1890. */
-    test.fail(true, 'createProgramRound accepts a whitespace-only round title: SAN-1890');
+    /* Regression guard for SAN-1890 (fixed 2026-10-14): the required check used to be
+       `trim(($_POST['roundTitle']) == "")`, which trimmed a boolean and accepted "   ". */
     let createdId: string | undefined;
     try {
       await expect(

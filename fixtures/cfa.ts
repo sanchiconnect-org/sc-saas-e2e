@@ -387,6 +387,10 @@ export class CfaAdmin {
   /**
    * Programs under one of the status tabs above the admin program list (PROGRAM_LIST_FILTERS)
    * whose title contains `titleContains`, from the newest 50 rows of that tab.
+   *
+   * The search is applied on every tab since SAN-1889 (2026-10-14) AND-ed it with the tab's own
+   * rule. Before that fix the Live and Ongoing Evaluation tabs ignored the search, and this helper
+   * sent a no-match term for them; with the fix in, that returned no rows at all.
    */
   async listProgramsInTab(filter: ProgramListFilter, titleContains: string): Promise<{ id: string; title: string }[]> {
     /* "[QA]" would switch the admin search to exact match (see listPrograms). */
