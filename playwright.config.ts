@@ -91,5 +91,13 @@ export default defineConfig({
       dependencies: ['setup-frontend', 'setup-admin', 'cfa-setup'],
       use: { ...devices['Desktop Chrome'], baseURL: env.frontendUrl },
     },
+    /* Journeys that set data up in the admin panel and run on the PWA (one-on-one event booking).
+       Needs both saved sessions; baseURL is the PWA, admin calls go through CfaAdmin. */
+    {
+      name: 'cross',
+      testDir: './tests/cross',
+      dependencies: ['setup-frontend', 'setup-admin'],
+      use: { ...devices['Desktop Chrome'], baseURL: env.frontendUrl },
+    },
   ],
 });

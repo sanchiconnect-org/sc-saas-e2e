@@ -41,6 +41,7 @@ login (login-otp.spec) ──► setup-frontend ──► frontend
 setup-admin ─────────────────────────────────► admin
 setup-admin ──► cfa-setup ──(teardown)──► cfa-teardown
 setup-frontend + setup-admin + cfa-setup ──► cfa
+setup-frontend + setup-admin ──► cross   (admin sets data up, PWA journey runs: one-on-one booking)
 ```
 
 The `login` project runs before any session is saved, for the single-session reason in hard rule 3. A broken admin login doesn't block the PWA tests, and the reverse holds too.
