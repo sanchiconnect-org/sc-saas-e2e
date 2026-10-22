@@ -1,0 +1,17 @@
+{
+  "journey": "frontend-startup-dashboard",
+  "url": "https://thub.sanchidev.in/startups/dashboard",
+  "timestamp": "2026-10-16T07:42:48.386Z",
+  "violations": [
+    {
+      "id": "color-contrast",
+      "impact": "serious",
+      "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+      "nodes": 1,
+      "isDuplicateLabel": false
+    }
+  ],
+  "violationCount": 1,
+  "duplicateLabelCount": 0
+}

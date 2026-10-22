@@ -1,0 +1,33 @@
+{
+  "journey": "admin-login",
+  "url": "https://adm.thub.sanchidev.in/auth/login",
+  "timestamp": "2026-10-16T07:42:37.786Z",
+  "violations": [
+    {
+      "id": "html-has-lang",
+      "impact": "serious",
+      "description": "Ensure every HTML document has a lang attribute",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/html-has-lang?application=playwright",
+      "nodes": 1,
+      "isDuplicateLabel": false
+    },
+    {
+      "id": "image-alt",
+      "impact": "critical",
+      "description": "Ensure <img> elements have alternative text or a role of none or presentation",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/image-alt?application=playwright",
+      "nodes": 1,
+      "isDuplicateLabel": false
+    },
+    {
+      "id": "link-name",
+      "impact": "serious",
+      "description": "Ensure links have discernible text",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/link-name?application=playwright",
+      "nodes": 1,
+      "isDuplicateLabel": false
+    }
+  ],
+  "violationCount": 3,
+  "duplicateLabelCount": 0
+}
