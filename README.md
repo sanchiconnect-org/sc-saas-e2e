@@ -13,7 +13,7 @@ There is one environment per deployed branch. Each has its own QA tenant and its
 | `E2E_ENV` | Branch | Deployed on | QA tenant (member PWA / admin / API) | Writes data? |
 |---|---|---|---|---|
 | `development` (default) | `ai_native_setup` | sanchidev.in | `https://thub.sanchidev.in` / `https://adm.thub.sanchidev.in` / `https://api.thub.sanchidev.in` | yes |
-| `staging` | `stagingdemo` | production AWS, via Jenkins (cockpit `api.tenants.sanchiconnect.com`) | `https://demo.sanchiapp.com` / `https://adm.demo.sanchiapp.com` / `https://api.demo.sanchiapp.com` | yes |
+| `staging` | `stagingdemo` | production AWS, via Jenkins (cockpit `api.tenants.sanchiconnect.com`) | `https://demo.sanchiapp.com` / `https://adm.demo.sanchiapp.com` / `https://api.demo.sanchiapp.com` | **no**: it's a production demo site, so `@write` tests are skipped (decided 2026-10-22) |
 | `production` | `main` / `master` | production AWS, via Jenkins | _to be created_ | **no**: tests tagged `@write` are skipped (`playwright.config.ts`) |
 
 Decided 12 Oct 2026 (SAN-1581). The old staging cockpit `api-dev.tenants.sanchiconnect.com` returns 502 and isn't used.
@@ -246,7 +246,7 @@ Give every applicant you create a unique name or a `cfaEmail(runId, …)` addres
 1. A flaky test is quarantined the same day with an issue, never re-run until green.
 2. Every journey has one owner, and the owner fixes it when it fails.
 3. The smoke suite runs in under 10 minutes.
-4. Tests that write run on development and staging; only read-only tests run on production.
+4. Tests that write run on development only. Staging (the demo site) and production run read-only tests.
 5. An escaped defect gets a test before its fix merges.
 
 ## Nightly reset plan (SAN-1613)

@@ -17,7 +17,7 @@ Node ≥ 20 · `@playwright/test` · TypeScript · `dotenv` · `tsx`. Default br
 ## Hard rules
 
 1. **Never read, print or grep `.env.*` files.** They hold real credentials, and the user's permission settings deny it. Playwright loads them at runtime: just run the tests. New keys go in `env.example` (empty or placeholder values), the env block of `.github/workflows/e2e.yml`, and the README secrets list.
-2. **Production is read-only.** Anything that creates or changes data is tagged `@write`, and `playwright.config.ts` skips it when `E2E_ENV=production`. Every new writing test must carry `@write`.
+2. **Only development writes.** Staging (`demo.sanchiapp.com`, a production demo site) and production are read-only. Anything that creates or changes data is tagged `@write`, and `playwright.config.ts` skips it unless `E2E_ENV=development`. Every new writing test must carry `@write`.
 3. **Never UI-login a seeded member inside a journey.** The QA tenant enforces single-session login, so a new login kills the saved session that other tests are using. Use `asRole('<role>')` from `fixtures/auth.ts`. The only UI logins are in the `login` project (`tests/frontend/login-otp.spec.ts`, which runs first) and in the setup files.
 4. **Tests are tagged.** Use `@smoke` or `@regression`; `@frontend`, `@admin` or `@cfa`; the role (`@startup`…); and `@write`. Setup files carry every run tag (`@smoke @regression @cfa`), so `--grep` still logs in first. A new run tag must be added to the setup files too.
 5. **Assert on the real request, not the toast.** Several PWA toasts fire before the HTTP call finishes. Use `page.waitForResponse(...)` and check `.ok()`.
@@ -51,7 +51,7 @@ The `login` project runs before any session is saved, for the single-session rea
 | `E2E_ENV` | Branch it tests | QA tenant | Writes |
 |---|---|---|---|
 | development | `ai_native_setup` | `thub.sanchidev.in` / `adm.thub.sanchidev.in` / `api.thub.sanchidev.in` | yes |
-| staging | `stagingdemo` | `demo.sanchiapp.com` / `adm.demo.sanchiapp.com` / `api.demo.sanchiapp.com` | yes |
+| staging | `stagingdemo` | `demo.sanchiapp.com` / `adm.demo.sanchiapp.com` / `api.demo.sanchiapp.com` | no (production demo site) |
 | production | `main` | not created yet | no |
 
 CI (`.github/workflows/e2e.yml`) runs nightly against development and on demand (`workflow_dispatch`). Secrets live in GitHub **Environments** named after `E2E_ENV`.

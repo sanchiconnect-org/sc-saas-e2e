@@ -4,7 +4,8 @@ import * as dotenv from 'dotenv';
 /**
  * Which environment the suite runs against — one per deployed branch:
  *  - development: ai_native_setup (sanchidev.in). Full suite; writes allowed. Start here.
- *  - staging:     stagingdemo (AWS via Jenkins). Full suite; writes allowed on its QA tenant only.
+ *  - staging:     stagingdemo (AWS via Jenkins) = demo.sanchiapp.com, a production demo site that
+ *                 prospects see. Read-only: anything tagged @write is skipped (decided 2026-10-22).
  *  - production:  main/master (AWS via Jenkins). QA tenant only; read-only — anything
  *                 tagged @write is skipped.
  */
@@ -29,7 +30,8 @@ function required(name: string): string {
 
 export const env = {
   name: E2E_ENV,
-  allowWrites: E2E_ENV !== 'production',
+  /* Only development writes. staging (the demo site) and production are read-only. */
+  allowWrites: E2E_ENV === 'development',
   /** QA tenant member PWA, e.g. https://thub.sanchidev.in */
   get frontendUrl() {
     return required('FRONTEND_URL');
