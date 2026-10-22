@@ -112,6 +112,21 @@ export default defineConfig({
       dependencies: ['setup-frontend'],
       use: { ...devices['iPhone 14'], baseURL: env.frontendUrl },
     },
+    /* SAN-1617 visual checks: 10 screens × desktop and phone = 20 baselines, read-only. Baselines are
+       per platform (CI = linux) and are only regenerated through the workflow's update_snapshots run
+       and a reviewed commit. Needs both sessions and this run's test-mode program (2 screens). */
+    {
+      name: 'visual-desktop',
+      testDir: './tests/visual',
+      dependencies: ['setup-frontend', 'setup-admin', 'cfa-setup'],
+      use: { ...devices['Desktop Chrome'], baseURL: env.frontendUrl },
+    },
+    {
+      name: 'visual-phone',
+      testDir: './tests/visual',
+      dependencies: ['setup-frontend', 'setup-admin', 'cfa-setup'],
+      use: { ...devices['Pixel 7'], baseURL: env.frontendUrl },
+    },
     /* Journeys that set data up in the admin panel and run on the PWA (one-on-one event booking).
        Needs both saved sessions; baseURL is the PWA, admin calls go through CfaAdmin. */
     {

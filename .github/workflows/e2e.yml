@@ -16,6 +16,10 @@ on:
         description: 'Only run this Playwright project (frontend, admin or cfa). Empty runs every project.'
         type: string
         default: ''
+      update_snapshots:
+        description: 'SAN-1617: regenerate the visual baselines (runs only the visual projects; grep/project ignored). Download the visual-baselines artifact and commit it through a reviewed change.'
+        type: boolean
+        default: false
   # Called by the smoke check in sc-saas-frontend and sc-saas-admin (SAN-1585):
   #   uses: sanchiconnect-org/sc-saas-e2e/.github/workflows/e2e.yml@main
   # The Environment named by `environment` is looked up in the CALLING repository, so each caller needs
@@ -97,11 +101,24 @@ jobs:
           # Scheduled runs have no inputs, so GREP is empty and the full suite runs.
           GREP: ${{ inputs.grep }}
           PROJECT: ${{ inputs.project }}
+          UPDATE_SNAPSHOTS: ${{ inputs.update_snapshots }}
         run: |
           args=()
-          if [ -n "$GREP" ]; then args+=(--grep "$GREP"); fi
-          if [ -n "$PROJECT" ]; then args+=(--project "$PROJECT"); fi
+          if [ "$UPDATE_SNAPSHOTS" = "true" ]; then
+            args+=(--project visual-desktop --project visual-phone --update-snapshots)
+          else
+            if [ -n "$GREP" ]; then args+=(--grep "$GREP"); fi
+            if [ -n "$PROJECT" ]; then args+=(--project "$PROJECT"); fi
+          fi
           npx playwright test "${args[@]}"
+
+      - name: Upload visual baselines
+        if: ${{ !cancelled() && inputs.update_snapshots }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-baselines-${{ env.E2E_ENV }}-${{ github.run_number }}
+          path: tests/visual/**/*-snapshots/
+          retention-days: 14
 
       - name: Upload HTML report
         if: ${{ !cancelled() }}

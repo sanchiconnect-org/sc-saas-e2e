@@ -256,6 +256,28 @@ They reuse the sessions `setup-frontend` saved, so they never log a seeded membe
 
 **Known mobile behaviour:** on phones the PWA shows an "Install App" banner pinned to the bottom of the screen, over the primary button (e.g. Continue on registration), until it's dismissed (`localStorage.pwa_install_dismissed`). `RegisterPage` starts as a user who has already dismissed it.
 
+## Visual checks (SAN-1617)
+
+`tests/visual/` compares 10 screens with committed baselines, at desktop (`visual-desktop`) and phone (`visual-phone`, Pixel 7) widths: **20 baselines**. Read-only.
+
+| # | Screen | # | Screen |
+|---|---|---|---|
+| 01 | Login | 06 | Call for Applications list |
+| 02 | Registration, account type | 07 | Program apply page (this run's test program) |
+| 03 | Startup dashboard | 08 | Investor dashboard |
+| 04 | Startup profile, basic info | 09 | Admin dashboard |
+| 05 | Startup pitch deck page | 10 | Admin applications table view |
+
+The screens were chosen from the core journeys (2026-10-22); swap in the most-used pages from usage data when it's available.
+
+- **Live data is masked:** names, counts, dates, badges, dashboard cards, form values, program cards and titles. What's compared is layout, branding and navigation.
+- **Tolerance:** an absolute pixel count per device (`fixtures/visual.ts`), set between the measured run-to-run noise and a 1-pixel layout shift. The "sensitivity guard" test shifts the login page by 1 px and must fail; if it ever "unexpectedly passes", the tolerance has become too loose.
+- **Baselines are per platform.** CI runs Linux, so only `*-linux.png` files are committed; local Mac ones are git-ignored.
+- **Updating baselines** (after an intended UI change):
+  1. Go to *Actions → e2e → Run workflow*, choose `development`, and tick **update_snapshots**.
+  2. Download the `visual-baselines-…` artifact.
+  3. Commit the changed `*-linux.png` files through a reviewed change. Never regenerate baselines just to make a failing run pass.
+
 ## Rules the suite lives by
 
 1. A flaky test is quarantined the same day with an issue, never re-run until green.

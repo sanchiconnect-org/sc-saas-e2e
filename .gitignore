@@ -17,3 +17,7 @@ blob-report/
 playwright/.cache/
 
 .DS_Store
+
+# Visual baselines are committed for CI's platform (linux) only; local Mac/Windows ones stay local.
+tests/visual/**/*-darwin.png
+tests/visual/**/*-win32.png
