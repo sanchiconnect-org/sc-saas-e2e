@@ -1,0 +1,16 @@
+---
+description: How to handle Linear task/bug IDs in sc-saas-e2e
+alwaysApply: true
+---
+
+# Linear ticket / bug workflow
+
+Whenever the user gives a task or bug ID (e.g. SAN-1614):
+
+1. **Read the complete ticket** in Linear — title, description, acceptance criteria, status, blockers/relations.
+2. **Read all comments** on the issue. Do not skip them.
+3. **Understand the requirement** before writing or changing any code.
+4. **Implement only in `sc-saas-e2e`** unless the user explicitly asks otherwise.
+5. **Do not guess.** If anything is unclear (scope, env, expected behaviour, missing secrets), ask the user first.
+6. Prefer reusing existing specs/page objects; only add or change scripts when the ticket requires it.
+7. **Test the changes** (run the relevant Playwright command) and **report the actual results** (pass/fail, skips, real error text) — never invent outcomes.

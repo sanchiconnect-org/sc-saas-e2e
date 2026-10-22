@@ -23,7 +23,17 @@ import { env } from '../config/env';
  *   import_applications_csv                              modules/application_management/submission-application-management.php
  *   update_rating_criteria                               modules/application_management/edit_program_round.php
  *   moveToSubmitted                                      modules/application_management/draft_applications.php
+ *   add_jury_member, remove_jury_round, add_question,
+ *   add_auto_allot_jury, remove_auto_allot_jury,
+ *   jury_nda_replace_version                             modules/application_management/edit_program_round.php
+ *   add_allotment, remove_allotment                      modules/application_management/edit_program_round_jury.php
  *   (version list, GET)                                  modules/form-management/versions.php
+ *   (downloads, GET) export_all_applications[_xlsx], download_program_data[_xlsx],
+ *   download_all_applications[_xlsx], {roundId}/download_csv, download_ratings_report,
+ *   get_bulk_pdf_urls, get_bulk_attachment_urls,
+ *   download_bulk_pdf, download_bulk_attachments         /application_management/submission-application-management/{id}/{slug}/…
+ *   download_pdf, download_attachments                   /application-submission-detail/{detailId}/…
+ *   (leads, reports, timeline pages, GET)                /application_management/{leads,reports,timeline}
  * Renaming any of these in sc-saas-admin breaks this file.
  */
 
@@ -41,6 +51,8 @@ export const CFA_FLAGS = [
   'call_for_applications_submitted_email_enabled',
   'limit_jury_access_enabled',
   'jury_nda_enabled',
+  'call_for_applications_analysis_enabled',
+  'ai_analyzer_enabled',
 ] as const;
 export type CfaFlag = (typeof CFA_FLAGS)[number];
 export type CfaFlags = Record<CfaFlag, boolean | null>;
@@ -407,6 +419,20 @@ export class CfaAdmin {
     return { status: res.status(), data: (await res.json())?.data };
   }
 
+  /**
+   * An applicant's application on a program, as the PWA apply page reads it:
+   * POST application-programs-management/{programUuid}/check_application_status/{email}/details
+   * (no auth). 404 when the email has no application yet; data carries applicationNumber,
+   * applicationStatus (accepted, rejected, tentative, …), currentRoundId and isRejected.
+   */
+  async applicationStatus(programUuid: string, email: string): Promise<{ status: number; data?: Record<string, any> }> {
+    const res = await (await this.backend()).post(
+      `/api/v1/application-programs-management/${programUuid}/check_application_status/${encodeURIComponent(email)}/details`,
+    );
+    if (!res.ok()) return { status: res.status() };
+    return { status: res.status(), data: (await res.json())?.data };
+  }
+
   /* ----- rounds ----- */
 
   /**
@@ -437,6 +463,28 @@ export class CfaAdmin {
     const roundId = /edit_program_round\/(\d+)/.exec(round.lastRoundUrl ?? '')?.[1];
     if (!roundId) throw new Error(`createProgramRound: no round id in ${round.lastRoundUrl}`);
     return roundId;
+  }
+
+  /**
+   * Sets a round's "Disable auto communication status updates to the applicant?" (editRound,
+   * edit_program_round.php; a plain form post, read back with programRounds()). New rounds have
+   * silent_transfer 1: moves into the round and rejects out of it send no email; 0 sends them.
+   */
+  async setRoundSilentTransfer(program: { id: string; adminSlug: string }, roundId: string, silent: boolean) {
+    const round = (await this.programRounds(program)).find((r) => r.id === roundId);
+    if (!round) throw new Error(`round ${roundId} not found on program ${program.id}`);
+    await this.html(`/application_management/edit_program_round/${roundId}`, {
+      submitAction: 'editRound',
+      roundId,
+      'data[round_name]': round.name,
+      'data[silent_transfer]': silent ? '1' : '0',
+      'data[approve_email_template]': '',
+      'data[reject_email_template]': '',
+    });
+    const saved = (await this.programRounds(program)).find((r) => r.id === roundId);
+    if (saved?.silentTransfer !== (silent ? '1' : '0')) {
+      throw new Error(`editRound: round ${roundId} silent_transfer is ${saved?.silentTransfer}, expected ${silent ? 1 : 0}`);
+    }
   }
 
   /** Soft-deletes a round (deleteRound: status=0, deleted_at set). */
@@ -602,6 +650,41 @@ export class CfaAdmin {
     return this.submitAction(this.submissionsPagePath(program), 'rejectApplication', form);
   }
 
+  /** The admin's "Hold Application" (tentativeApplication): the application keeps its round, its status becomes Tentative. */
+  async markTentative(program: CfaProgram, applicationId: string) {
+    return this.submitAction(this.submissionsPagePath(program), 'tentativeApplication', { programUUID: program.uuid, applicationId });
+  }
+
+  /**
+   * Soft-deletes an application from the program's evaluations (removeApplicationFromEvaluation,
+   * table view). Developer-role admins only: anyone else gets error "You don't have permission to remove applications."
+   */
+  async removeFromEvaluation(program: CfaProgram, applicationId: string) {
+    return this.submitAction(
+      `/application_management/submission-application-management-tableview/${program.id}/${program.adminSlug}`,
+      'removeApplicationFromEvaluation',
+      { programUUID: program.uuid, applicationId },
+    );
+  }
+
+  /**
+   * "Allow resubmission of this form" on an application that is in a round (sendForRoundResubmission,
+   * application-submission-detail.php): mails resubmit-application; the application keeps its round and status.
+   */
+  async sendForRoundResubmission(
+    program: CfaProgram,
+    application: { detailId: string; submissionId: string; name: string; email: string },
+    reason: string,
+  ) {
+    return this.submitAction(`/application-submission-detail/${application.detailId}`, 'sendForRoundResubmission', {
+      programId: program.id,
+      applicantName: application.name,
+      applicantEmail: application.email,
+      submissionId: application.submissionId,
+      reason,
+    });
+  }
+
   /**
    * Sends an application back to the applicant (sendForResubmission, application-submission-detail.php):
    * mails resubmit-application, sets forms_submissions.submitted=0 and, while the application is in
@@ -661,6 +744,236 @@ export class CfaAdmin {
         };
       });
   }
+
+  /* ----- jury (P5) ----- */
+
+  /** spa_admin_users.id of an admin-panel user, found by email on the admin users table. */
+  async adminUserId(email: string): Promise<string> {
+    return (await this.adminUser(email)).id;
+  }
+
+  /** id and name (the name a jury must type to sign an NDA) of an admin-panel user, from the admin users table. */
+  async adminUser(email: string): Promise<{ id: string; name: string }> {
+    const html = await this.html('/table/spa_admin_users', { q: email });
+    const row = html
+      .split('<tr record_id="')
+      .slice(1)
+      .map((r) => r.slice(0, r.indexOf('</tr>')))
+      .find((r) => r.toLowerCase().includes(email.toLowerCase()));
+    const id = row && /^(\d+)"/.exec(row)?.[1];
+    if (!row || !id) throw new Error(`admin user ${email} not found on /table/spa_admin_users`);
+    /* Columns: checkbox, id, name, ... */
+    const name = decodeHtml((row.split('<td').slice(1)[2] ?? '').replace(/^[^>]*>/, '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+    return { id, name };
+  }
+
+  /**
+   * Replaces a round's jury NDA PDF (jury_nda_replace_version, FA-010). resign=true makes every juror who
+   * signed the old version sign again before they can open the round.
+   */
+  async replaceJuryNda(program: { id: string }, roundId: string, pdf: { name: string; buffer: Buffer }, resign: boolean) {
+    const pagePath = `/application_management/edit_program_round/${roundId}?section=jury_allotment`;
+    const token = /token: "([a-f0-9]+)"/.exec(await this.html(pagePath))?.[1];
+    if (!token) throw new Error(`round ${roundId}: no form token on the jury section`);
+    return this.submitMultipart(pagePath, 'jury_nda_replace_version', {
+      nda_file: { name: pdf.name, mimeType: 'application/pdf', buffer: pdf.buffer },
+      roundId,
+      programId: program.id,
+      token,
+      resign: resign ? '1' : '0',
+    });
+  }
+
+  /** Adds an admin user to a round's jury panel (add_jury_member, edit_program_round.php). */
+  async addJuryToRound(roundId: string, juryId: string) {
+    return this.submitAction(`/application_management/edit_program_round/${roundId}`, 'add_jury_member', { juryId, roundId });
+  }
+
+  /** Removes a jury from a round with all their allotments and ratings in it (remove_jury_round). */
+  async removeJuryFromRound(roundId: string, juryId: string) {
+    return this.submitAction(`/application_management/edit_program_round/${roundId}`, 'remove_jury_round', { juryId, roundId });
+  }
+
+  /** The round's "Auto allot" switch for one jury (add_auto_allot_jury / remove_auto_allot_jury). */
+  async setJuryAutoAllot(roundId: string, juryId: string, on: boolean) {
+    return this.submitAction(`/application_management/edit_program_round/${roundId}`, on ? 'add_auto_allot_jury' : 'remove_auto_allot_jury', {
+      juryId,
+      roundId,
+    });
+  }
+
+  /** Adds a jury question to a round (add_question); answer types: boolean_only, boolean, text, upload, numeric. */
+  async addJuryQuestion(program: { id: string }, roundId: string, question: string, answerFieldType = 'boolean_only') {
+    return this.submitAction(`/application_management/edit_program_round/${roundId}`, 'add_question', {
+      question,
+      answer_field_type: answerFieldType,
+      description: '',
+      mandatory: 0,
+      programId: program.id,
+      roundId,
+      min_value: '',
+      max_value: '',
+    });
+  }
+
+  private juryAllotmentPath(roundId: string, submissionId: string) {
+    return `/application_management/edit_program_round_jury/${roundId}/${submissionId}`;
+  }
+
+  /**
+   * One application's jury allotment in a round, as the "Allot Jury" modal shows it:
+   * allotment ids of the juries it is allotted to, and ids of the round's juries it can still be allotted to.
+   */
+  async juryAllotments(roundId: string, submissionId: string): Promise<{ allotmentIds: string[]; allottableJuryIds: string[] }> {
+    const html = await this.html(this.juryAllotmentPath(roundId, submissionId));
+    return {
+      allotmentIds: [...html.matchAll(/<button allotmentId="(\d+)"[^>]*removeJury/g)].map((m) => m[1]),
+      allottableJuryIds: [...html.matchAll(/<button juryId="(\d+)"[^>]*addJury/g)].map((m) => m[1]),
+    };
+  }
+
+  /** Allots one application to a jury (add_allotment). */
+  async allotJury(program: { id: string }, roundId: string, submissionId: string, juryId: string) {
+    return this.submitAction(this.juryAllotmentPath(roundId, submissionId), 'add_allotment', {
+      juryId,
+      juryPartnerId: 0,
+      roundId,
+      submissionId,
+      programId: program.id,
+    });
+  }
+
+  /** De-allocates a jury from an application (remove_allotment); the jury's ratings on it are deleted. */
+  async deallocateJury(roundId: string, submissionId: string, allotmentId: string) {
+    return this.submitAction(this.juryAllotmentPath(roundId, submissionId), 'remove_allotment', { allotmentId });
+  }
+
+  /** The program's jury ratings report (download_ratings_report), an xlsx. */
+  async ratingsReport(program: { id: string; adminSlug: string }): Promise<Buffer> {
+    const api = await this.api();
+    const pagePath = `${this.submissionsPagePath(program)}/download_ratings_report`;
+    const res = await api.get(pagePath, { maxRedirects: 0 });
+    CfaAdmin.assertNotRedirected('download_ratings_report', pagePath, res.status(), res.headers()['location']);
+    if (!res.ok()) throw new Error(`${pagePath} returned HTTP ${res.status()}`);
+    return res.body();
+  }
+
+  /* ----- downloads, leads, reports, timeline (P6) ----- */
+
+  /**
+   * GETs an admin download. `fileName` comes from Content-Disposition and is null when the response
+   * is not an attachment (e.g. the plain-text "No attachments found ..." answer).
+   */
+  async download(pagePath: string, timeout = 60_000): Promise<AdminDownload> {
+    const api = await this.api();
+    const res = await api.get(pagePath, { maxRedirects: 0, timeout });
+    CfaAdmin.assertNotRedirected('GET', pagePath, res.status(), res.headers()['location']);
+    if (!res.ok()) throw new Error(`${pagePath} returned HTTP ${res.status()}`);
+    const disposition = res.headers()['content-disposition'] ?? '';
+    return {
+      body: await res.body(),
+      contentType: res.headers()['content-type'] ?? '',
+      fileName: /filename="?([^";]+)"?/.exec(disposition)?.[1] ?? null,
+    };
+  }
+
+  /**
+   * A download under the program's submissions page: export_all_applications[_xlsx],
+   * download_program_data[_xlsx], download_all_applications[_xlsx], `${roundId}/download_csv`,
+   * download_bulk_pdf, download_bulk_attachments ... `ids` (forms_submissions ids) limits the bulk ones.
+   */
+  async programDownload(program: { id: string; adminSlug: string }, action: string, ids: string[] = [], timeout?: number) {
+    const query = ids.length ? `?ids=${encodeURIComponent(ids.join(','))}` : '';
+    return this.download(`${this.submissionsPagePath(program)}/${action}${query}`, timeout);
+  }
+
+  /**
+   * The file list the submissions page's Download dropdown zips in the browser
+   * (get_bulk_pdf_urls / get_bulk_attachment_urls), for the given submissions. The admin answers
+   * `files` for one submission and `submissions[].files` for several; both come back as one list.
+   */
+  async bulkDownloadManifest(
+    program: { id: string; adminSlug: string },
+    kind: 'pdf' | 'attachments',
+    ids: string[],
+  ): Promise<{ success: boolean; totalFiles: number; files: { url: string; name: string }[] }> {
+    const res = await this.programDownload(program, kind === 'pdf' ? 'get_bulk_pdf_urls' : 'get_bulk_attachment_urls', ids);
+    const json = JSON.parse(res.body.toString('utf8'));
+    const files = [...(json.files ?? []), ...(json.submissions ?? []).flatMap((s: { files?: unknown[] }) => s.files ?? [])];
+    return { success: json.success === true, totalFiles: Number(json.totalFiles), files };
+  }
+
+  /** Leads of a program whose name or email matches `search`, from the Application Program Leads page (first 100). */
+  async programLeads(programId: string, search: string): Promise<ProgramLead[]> {
+    const html = await this.html(`/application_management/leads?program_id=${programId}&q=${encodeURIComponent(search)}&perpage=100`);
+    const table = html.slice(html.indexOf('<table class="lp-table">'));
+    return table
+      .slice(table.indexOf('<tbody>'), table.indexOf('</tbody>'))
+      .split('<tr>')
+      .slice(1)
+      .map((row) => ({
+        leadId: /data-lead-id="(\d+)"/.exec(row)?.[1] ?? '',
+        name: decodeHtml(/<strong title="([^"]*)"/.exec(row)?.[1] ?? ''),
+        email: (/lp-name-block[\s\S]*?lp-cell-meta" title="([^"]*)"/.exec(row)?.[1] ?? '').toLowerCase(),
+        status: (/lp-status-pill lp-status-([a-z_]+)/.exec(row)?.[1] ?? '').trim(),
+      }))
+      .filter((l) => l.email);
+  }
+
+  /** The Application Counts cards of the program's Reports page (all time, all statuses). */
+  async programReportCounts(program: { id: string; adminSlug: string }): Promise<{ total: number; submitted: number; draft: number }> {
+    const text = decodeHtml(
+      (await this.html(`/application_management/reports/${program.id}/${program.adminSlug}`))
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<[^>]+>/g, ' '),
+    ).replace(/\s+/g, ' ');
+    const m = /(\d+) Total Applications (\d+) Submitted Applications (\d+) Draft Applications/.exec(text);
+    if (!m) throw new Error(`program ${program.id}: Application Counts not found on the Reports page`);
+    return { total: Number(m[1]), submitted: Number(m[2]), draft: Number(m[3]) };
+  }
+
+  /** One row per application on the program's Timeline page. */
+  async programTimeline(program: { id: string; adminSlug: string }): Promise<TimelineRow[]> {
+    const html = await this.html(`/application_management/timeline/${program.id}/${program.adminSlug}`);
+    return html
+      .split('<span class="app-no">')
+      .slice(1)
+      .map((row) => row.slice(0, row.indexOf('</tr>')))
+      .map((row) => ({
+        applicationNo: row.slice(0, row.indexOf('<')).trim(),
+        currentRound: decodeHtml(/<span class="badge">Current: ([^<]*)<\/span>/.exec(row)?.[1] ?? '').trim() || null,
+        movedBy: [...row.matchAll(/meta-label">By<\/span><span class="meta-val">([^<]*)</g)].map((m) => decodeHtml(m[1]).trim()),
+      }));
+  }
+}
+
+export interface AdminDownload {
+  body: Buffer;
+  contentType: string;
+  fileName: string | null;
+}
+
+/** One row of the Application Program Leads page (see CfaAdmin.programLeads). */
+export interface ProgramLead {
+  leadId: string;
+  name: string;
+  email: string;
+  /** the status pill's class suffix: modal_opened | partial | otp_sent | otp_verified | form_in_progress | abandoned ... */
+  status: string;
+}
+
+/** One application on the program Timeline page (see CfaAdmin.programTimeline). */
+export interface TimelineRow {
+  /** e.g. APP05103 */
+  applicationNo: string;
+  currentRound: string | null;
+  /** the "By" admin of each round the application entered, oldest first */
+  movedBy: string[];
+}
+
+/** The application number the admin shows for a submission (detail PDF name, timeline): APP + id padded to 5. */
+export function applicationNo(submissionId: string): string {
+  return `APP${submissionId.padStart(5, '0')}`;
 }
 
 /** One row of the admin submissions table view (see CfaAdmin.submittedApplications). */

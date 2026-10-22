@@ -1,0 +1,33 @@
+{
+  "journey": "frontend-login",
+  "url": "https://thub.sanchidev.in/auth/login",
+  "timestamp": "2026-10-16T07:42:46.003Z",
+  "violations": [
+    {
+      "id": "aria-allowed-attr",
+      "impact": "critical",
+      "description": "Ensure an element's role supports its ARIA attributes",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/aria-allowed-attr?application=playwright",
+      "nodes": 1,
+      "isDuplicateLabel": false
+    },
+    {
+      "id": "color-contrast",
+      "impact": "serious",
+      "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+      "nodes": 2,
+      "isDuplicateLabel": false
+    },
+    {
+      "id": "image-alt",
+      "impact": "critical",
+      "description": "Ensure <img> elements have alternative text or a role of none or presentation",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/image-alt?application=playwright",
+      "nodes": 1,
+      "isDuplicateLabel": false
+    }
+  ],
+  "violationCount": 4,
+  "duplicateLabelCount": 0
+}

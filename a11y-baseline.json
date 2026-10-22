@@ -1,0 +1,48 @@
+{
+  "ticket": "SAN-1610",
+  "recordedAt": "2026-10-16",
+  "env": "development",
+  "note": "Advisory baseline from first local axe run on smoke landings. Tests do not fail on these counts.",
+  "journeys": {
+    "admin-dashboard": {
+      "violationNodes": 95,
+      "duplicateLabelNodes": 0,
+      "ruleIds": [
+        "aria-required-parent",
+        "color-contrast",
+        "image-alt",
+        "label-content-name-mismatch",
+        "link-name"
+      ]
+    },
+    "admin-login": {
+      "violationNodes": 3,
+      "duplicateLabelNodes": 0,
+      "ruleIds": [
+        "html-has-lang",
+        "image-alt",
+        "link-name"
+      ]
+    },
+    "frontend-login": {
+      "violationNodes": 4,
+      "duplicateLabelNodes": 0,
+      "ruleIds": [
+        "aria-allowed-attr",
+        "color-contrast",
+        "image-alt"
+      ]
+    },
+    "frontend-startup-dashboard": {
+      "violationNodes": 1,
+      "duplicateLabelNodes": 0,
+      "ruleIds": [
+        "color-contrast"
+      ]
+    }
+  },
+  "totals": {
+    "violationNodes": 103,
+    "duplicateLabelNodes": 0
+  }
+}
