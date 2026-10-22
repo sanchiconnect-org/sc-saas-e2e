@@ -12,12 +12,34 @@ on:
         description: 'Only run tests matching this tag (e.g. @smoke). Empty runs everything.'
         type: string
         default: '@smoke'
+      project:
+        description: 'Only run this Playwright project (frontend, admin or cfa). Empty runs every project.'
+        type: string
+        default: ''
+  # Called by the smoke check in sc-saas-frontend and sc-saas-admin (SAN-1585):
+  #   uses: sanchiconnect-org/sc-saas-e2e/.github/workflows/e2e.yml@main
+  # The Environment named by `environment` is looked up in the CALLING repository, so each caller needs
+  # its own Environment holding the QA secrets below, and passes them in with `secrets: inherit`.
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to run against (development, staging or production)'
+        type: string
+        default: development
+      grep:
+        description: 'Only run tests matching this tag. Empty runs everything.'
+        type: string
+        default: '@smoke'
+      project:
+        description: 'Only run this Playwright project (frontend, admin or cfa). Empty runs every project.'
+        type: string
+        default: ''
   schedule:
     # Nightly at 02:00 IST (20:30 UTC) against development (ai_native_setup)
     - cron: '30 20 * * *'
 
 concurrency:
-  group: e2e-${{ github.event.inputs.environment || 'development' }}
+  group: e2e-${{ inputs.environment || 'development' }}-${{ inputs.project || 'all' }}
   cancel-in-progress: false
 
 jobs:
@@ -25,10 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Each environment is a GitHub Environment holding its own secrets (Settings → Environments).
-    environment: ${{ github.event.inputs.environment || 'development' }}
+    environment: ${{ inputs.environment || 'development' }}
     env:
       CI: 'true'
-      E2E_ENV: ${{ github.event.inputs.environment || 'development' }}
+      E2E_ENV: ${{ inputs.environment || 'development' }}
       FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
       ADMIN_URL: ${{ secrets.ADMIN_URL }}
       API_URL: ${{ secrets.API_URL }}
@@ -72,9 +94,13 @@ jobs:
       - name: Run tests
         env:
           # Scheduled runs have no inputs, so GREP is empty and the full suite runs.
-          GREP: ${{ github.event.inputs.grep }}
+          GREP: ${{ inputs.grep }}
+          PROJECT: ${{ inputs.project }}
         run: |
-          if [ -n "$GREP" ]; then npx playwright test --grep "$GREP"; else npx playwright test; fi
+          args=()
+          if [ -n "$GREP" ]; then args+=(--grep "$GREP"); fi
+          if [ -n "$PROJECT" ]; then args+=(--project "$PROJECT"); fi
+          npx playwright test "${args[@]}"
 
       - name: Upload HTML report
         if: ${{ !cancelled() }}
