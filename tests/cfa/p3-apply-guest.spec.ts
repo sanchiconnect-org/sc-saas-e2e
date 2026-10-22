@@ -370,14 +370,9 @@ test.describe('CFA P3: guest applicants on a bypass-OTP program', { tag: TAGS },
 
 test.describe('CFA P3: a builder-default field on the apply form', { tag: TAGS }, () => {
   test('a field whose properties were never edited in the builder is shown to the applicant', async ({ cfaAdmin, cfaRun, page }) => {
-    /* Bug pending filing. A field dropped into the builder gets the default visibility rule
-       {show:"show", field:null, condition:"is", value:null} (sc-saas-admin
-       modules/form-management/edit-form.php, default field data). Until someone opens and saves
-       its properties panel, that rule stays. The PWA's isFieldVisibleCommon (sc-saas-frontend
-       shared/utils/form.utils.ts) then evaluates form[null] === null, which is false, so the
-       field is hidden from applicants. The dev "[QA] E2E template form" field ("Enter Field
-       Title") is exactly such a field and never renders on the PWA. */
-    test.fail(true, 'bug pending filing: builder-default visibility hides the field on the PWA');
+    /* Regression guard for SAN-1896 (fixed). A field dropped into the builder gets the default
+       visibility rule {show:"show", field:null, condition:"is", value:null}; the PWA's
+       isFieldVisibleCommon used to evaluate form[null] === null as false and hide the field. */
     test.setTimeout(120_000);
     const program = await createCfaProgram(cfaAdmin, { runId: cfaRun.runId, label: `p3-default-vis-${rand()}`, rounds: 0, ratingCriteriaOnLastRound: false });
     try {

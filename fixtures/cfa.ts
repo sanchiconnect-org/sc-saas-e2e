@@ -376,18 +376,13 @@ export class CfaAdmin {
    * Programs under one of the status tabs above the admin program list (PROGRAM_LIST_FILTERS)
    * whose title contains `titleContains`, from the newest 50 rows of that tab.
    *
-   * The admin search can't be combined with the Live and Ongoing Evaluation tabs: table.php puts
-   * the search terms into the same OR as those tabs' deadline rule, so a program that matches the
-   * search is listed under both tabs whatever its state. And the search is sticky (kept in the PHP
-   * session; an empty term keeps the previous one). So for those two tabs a search that matches
-   * no program is sent, which leaves only the tab's own rule, and the title is matched here.
+   * The search is applied on every tab since SAN-1889 (2026-10-14) AND-ed it with the tab's own
+   * rule. Before that fix the Live and Ongoing Evaluation tabs ignored the search, and this helper
+   * sent a no-match term for them; with the fix in, that returned no rows at all.
    */
   async listProgramsInTab(filter: ProgramListFilter, titleContains: string): Promise<{ id: string; title: string }[]> {
-    const search =
-      filter === 'live' || filter === 'ongoingEvaluation'
-        ? `qa${Math.random().toString(36).slice(2)}nomatch`
-        : /* "[QA]" would switch the admin search to exact match (see listPrograms). */
-          titleContains.replace(/^\[QA\]\s*/, '');
+    /* "[QA]" would switch the admin search to exact match (see listPrograms). */
+    const search = titleContains.replace(/^\[QA\]\s*/, '');
     const rows = await this.programTableRows(
       `${ADMIN_PROGRAMS_TABLE}?sortby=id:DESC&perpage=50&conditions=${PROGRAM_LIST_FILTERS[filter]}`,
       search,
