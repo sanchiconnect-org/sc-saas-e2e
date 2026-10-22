@@ -91,6 +91,27 @@ export default defineConfig({
       dependencies: ['setup-frontend', 'setup-admin', 'cfa-setup'],
       use: { ...devices['Desktop Chrome'], baseURL: env.frontendUrl },
     },
+    /* SAN-1620 mobile emulation matrix: the PWA @smoke journeys on a mid-range Android phone (Chromium)
+       and an iPhone (WebKit). They reuse the sessions setup-frontend saved, so they never UI-login a
+       seeded member (single-session). Left out: the login journey itself, and the axe reports, which
+       are desktop landings. A real-device cloud is only considered if a device-specific defect shows
+       up that emulation missed (decision recorded in README). */
+    {
+      name: 'mobile-android',
+      testDir: './tests/frontend',
+      testIgnore: [/login-otp\.spec\.ts/, /a11y-smoke\.spec\.ts/],
+      grep: /@smoke/,
+      dependencies: ['setup-frontend'],
+      use: { ...devices['Pixel 7'], baseURL: env.frontendUrl },
+    },
+    {
+      name: 'mobile-iphone',
+      testDir: './tests/frontend',
+      testIgnore: [/login-otp\.spec\.ts/, /a11y-smoke\.spec\.ts/],
+      grep: /@smoke/,
+      dependencies: ['setup-frontend'],
+      use: { ...devices['iPhone 14'], baseURL: env.frontendUrl },
+    },
     /* Journeys that set data up in the admin panel and run on the PWA (one-on-one event booking).
        Needs both saved sessions; baseURL is the PWA, admin calls go through CfaAdmin. */
     {

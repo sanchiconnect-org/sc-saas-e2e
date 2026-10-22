@@ -24,6 +24,9 @@ export class RegisterPage {
   }
 
   async goto() {
+    /* On phones the PWA's "Install App" banner (app.component.html, .pwa-install-banner) sits over
+       the Continue button until dismissed; start as a user who has already dismissed it (SAN-1620). */
+    await this.page.addInitScript(() => window.localStorage.setItem('pwa_install_dismissed', 'true'));
     await this.page.goto('/auth/register');
   }
 

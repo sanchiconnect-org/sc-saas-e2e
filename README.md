@@ -241,6 +241,21 @@ Give every applicant you create a unique name or a `cfaEmail(runId, …)` addres
 
 **Leftover rows.** Deleting a program removes its form, submissions, rounds, ratings, jury, questions and FAQs. It does **not** remove leads, documents, AI analyses, notifications, S3 objects or email logs, so these build up on the QA tenant: about one program's worth per run. Cleaning them up is SAN-1613's job. Until it lands, never assert on global counts (total leads, total emails); assert only on rows filtered by your own run id or address.
 
+## Mobile emulation (SAN-1620)
+
+The PWA's `@smoke` journeys also run on two phone profiles, as their own Playwright projects:
+
+| Project | Device | Browser |
+|---|---|---|
+| `mobile-android` | Pixel 7 (mid-range Android) | Chromium |
+| `mobile-iphone` | iPhone 14 | WebKit |
+
+They reuse the sessions `setup-frontend` saved, so they never log a seeded member in again. They leave out the login journey and the axe reports, which are desktop landings. They run with the full suite (nightly) and with `npx playwright test --project=mobile-android --project=mobile-iphone`. CI installs WebKit for them.
+
+**Real devices:** decided 2026-10-22 to stay on emulation. A real-device cloud is considered only if a device-specific defect appears that emulation missed.
+
+**Known mobile behaviour:** on phones the PWA shows an "Install App" banner pinned to the bottom of the screen, over the primary button (e.g. Continue on registration), until it's dismissed (`localStorage.pwa_install_dismissed`). `RegisterPage` starts as a user who has already dismissed it.
+
 ## Rules the suite lives by
 
 1. A flaky test is quarantined the same day with an issue, never re-run until green.

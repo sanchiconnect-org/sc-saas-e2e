@@ -34,7 +34,8 @@ test.describe('pitch deck upload', { tag: ['@smoke', '@frontend', '@startup', '@
     expect(response.ok(), `upload returned ${response.status()}`).toBe(true);
 
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'Your pitch deck' })).toBeVisible();
+    /* Not asserted: the "Your pitch deck" heading. It belongs to the image carousel and only shows once
+       the async PDF→image conversion has finished, which a parallel upload for the same startup resets. */
     await expect(page.getByRole('cell', { name: 'qa-pitch-deck.pdf' })).toBeVisible();
   });
 });
