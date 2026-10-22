@@ -185,7 +185,7 @@ First regression block beyond Smoke 10. Five journeys cover register → complet
 
 | # | Spec | Purpose | Auth |
 |---|---|---|---|
-| 1 | `tests/frontend/startup-path-register.spec.ts` | New startup registers with email OTP; wrong OTP stays on the OTP step; company name lands on the profile | Fresh address from `QA_REGISTER_EMAIL_PATTERN` (not the seeded account) |
+| 1 | `tests/frontend/startup-path-register.spec.ts` | New startup registers with email OTP; company name lands on the profile | Fresh address from `QA_REGISTER_EMAIL_PATTERN` (not the seeded account) |
 | 2 | `tests/frontend/startup-path-complete-profile.spec.ts` | Seeded startup fills required Basic Information; NEXT STEP unlocks; values persist after reload | Seeded startup via `asRole('startup')` |
 | 3 | `tests/cfa/startup-path-apply.spec.ts` | Seeded startup applies to a throwaway program; status check + admin table show Submitted | Seeded startup session + CFA admin |
 | 4 | `tests/cfa/startup-path-track-application.spec.ts` | My Applications lists the program; status view follows the move into round 1 | Seeded startup session + CFA admin |

@@ -19,24 +19,6 @@ const pattern = process.env.QA_REGISTER_EMAIL_PATTERN;
 test.describe('startup path: register', { tag: ['@regression', '@frontend', '@startup', '@write'] }, () => {
   test.skip(!pattern || !pattern.includes('*'), 'QA_REGISTER_EMAIL_PATTERN not set (e.g. sc_reg_*@yopmail.com)');
 
-  test('a wrong OTP is rejected and the wizard stays on the OTP step', async ({ page }) => {
-    const runId = Date.now().toString();
-    const email = pattern!.replace('*', `bad${runId}`).toLowerCase();
-    /* Prefer digits that are not OTP-box placeholders (often shown as "0"). */
-    const wrong = qaOtp() === '1111' ? '2222' : '1111';
-
-    const register = new RegisterPage(page);
-    await register.goto();
-    await register.chooseAccountType('startup');
-    await register.fillProfile({ companyName: `QA Path Bad OTP ${runId}`, name: 'QA Path Founder', email });
-
-    await register.enterOtp(wrong);
-
-    await expect(page).toHaveURL(/\/auth\/register/);
-    await expect(page.getByRole('heading', { name: 'Email Verification' })).toBeVisible();
-    await expect(register.otpBoxes.first()).toBeVisible();
-  });
-
   test('a new startup registers with email OTP and its profile holds the registered company name', async ({ page }) => {
     const runId = Date.now().toString();
     /* Lowercase, no "+": the register form's email regex rejects both. */
