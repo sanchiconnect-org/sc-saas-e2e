@@ -79,6 +79,8 @@ jobs:
       QA_CFA_NDA_PROGRAM_ID: ${{ secrets.QA_CFA_NDA_PROGRAM_ID }}
       QA_CFA_CLOSED_PROGRAM_PATH: ${{ secrets.QA_CFA_CLOSED_PROGRAM_PATH }}
       QA_CFA_EMAIL_PATTERN: ${{ secrets.QA_CFA_EMAIL_PATTERN }}
+      # SAN-1959: optional; "enforce" makes the applicant-token tests fail unless the backend enforces
+      QA_EXPECT_APPLICANT_TOKEN_MODE: ${{ secrets.QA_EXPECT_APPLICANT_TOKEN_MODE }}
     steps:
       - uses: actions/checkout@v7
 

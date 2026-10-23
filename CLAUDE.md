@@ -28,7 +28,7 @@ Node ≥ 20 · `@playwright/test` · TypeScript · `dotenv` · `tsx`. Default br
 
 ```
 config/       env.ts (E2E_ENV, URLs, env.cfa.*) · accounts.ts (roles, secrets, qaOtp, authFile)
-fixtures/     auth.ts asRole() · cfa.ts (CFA program fixture + CfaAdmin + extended test) · email-log.ts · files/
+fixtures/     auth.ts asRole() · cfa.ts (CFA program fixture + CfaAdmin + extended test) · applicant-token.ts (SAN-1959 guest token via the fixed OTP, APPLICANT_TOKEN_MODE probe) · email-log.ts · files/
 pages/        page objects: frontend/ (LoginPage, RegisterPage, StartupProfilePage, cfa/*), admin/ (AdminLoginPage, cfa/*)
 seed/         API seeding of the 8 member accounts
 tests/        *.setup.ts / cfa.teardown.ts · frontend/ · admin/ · cfa/

@@ -22,6 +22,7 @@ import {
   applicationNo,
   cfaEmail,
   createCfaProgram,
+  decodeApplicantToken,
   deleteCfaProgram,
   expect,
   test,
@@ -150,7 +151,11 @@ test.describe('CFA P6: downloads, leads, reports, timeline', { tag: TAGS }, () =
     expect((await modal.fillApplicant(applicant)).ok(), 'lead upsert').toBe(true);
     const firstSave = apply.firstSave(program.formUUID);
     await modal.submitWithoutOtp();
-    await apply.formReady(firstSave);
+    const first = await apply.formReady(firstSave);
+    /* SAN-1959: a bypass-OTP program's first save hands the new guest a token for that one submission;
+       the file upload below and the rest of the session carry it. */
+    const created = (await first.json())?.data ?? {};
+    expect(decodeApplicantToken(created.applicantToken)).toMatchObject({ programUUID: program.uuid, sid: Number(created.id), src: 'created' });
     await apply.field(SHORT.key).fill(`QA p6 file ${tag}`);
     const [upload] = await Promise.all([
       page.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes(`/submission/${program.formUUID}/upload-file`)),

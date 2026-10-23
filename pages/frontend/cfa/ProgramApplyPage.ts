@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, type Request, type Response } from '@playwright/test';
+import { APPLICANT_TOKEN_HEADER, applicantToken, applicantTokenStorageKey, type IssuedApplicantToken } from '../../../fixtures/applicant-token';
 import { GuestLeadModal } from './GuestLeadModal';
 
 const req = (r: Request | Response): Request => ('request' in r ? r.request() : r);
@@ -46,23 +47,44 @@ export class ProgramApplyPage {
    * localStorage['application-{programUuid}'] (written after the lead modal + OTP) and, when it
    * holds an email, opens straight on the application form. Call before goto(). This skips the
    * lead modal and OTP; use it for applicants that already exist (e.g. CSV-seeded ones).
+   *
+   * SAN-1959: a stored identity alone no longer opens anything: without an unexpired applicant
+   * token the page asks for the email OTP first (and in APPLICANT_TOKEN_MODE=enforce every guest
+   * call needs the token). So this also stores the token the OTP would have earned,
+   * localStorage['applicant-token-{programUuid}'] = { token, expiresAt }, obtained through the QA
+   * fixed OTP (applicantToken(), cached per worker). Pass `token: null` to store the identity only
+   * (a pre-SAN-1959 guest), or a token of your own.
    */
-  async useGuestIdentity(programUuid: string, identity: { email: string; name: string }) {
-    await this.page.addInitScript(
-      ([key, value]) => {
+  async useGuestIdentity(
+    programUuid: string,
+    identity: { email: string; name: string },
+    options: { token?: IssuedApplicantToken | null } = {},
+  ) {
+    const issued = options.token !== undefined ? options.token : await applicantToken(programUuid, identity.email);
+    const entries: [string, string][] = [[`application-${programUuid}`, JSON.stringify(identity)]];
+    if (issued) {
+      entries.push([applicantTokenStorageKey(programUuid), JSON.stringify({ token: issued.applicantToken, expiresAt: issued.applicantTokenExpiresAt })]);
+    }
+    await this.page.addInitScript((pairs) => {
+      for (const [key, value] of pairs) {
         /* Only on the first load: later reloads must see what the PWA itself wrote. */
         if (!window.sessionStorage.getItem(`qa-seeded-${key}`)) {
           window.localStorage.setItem(key, value);
           window.sessionStorage.setItem(`qa-seeded-${key}`, '1');
         }
-      },
-      [`application-${programUuid}`, JSON.stringify(identity)] as const,
-    );
+      }
+    }, entries);
   }
 
   /** The identity the PWA keeps for this program (localStorage['application-{uuid}']), or null. */
   async storedIdentity(programUuid: string): Promise<Record<string, any> | null> {
     const raw = await this.page.evaluate((key) => window.localStorage.getItem(key), `application-${programUuid}`);
+    return raw ? JSON.parse(raw) : null;
+  }
+
+  /** The applicant token the PWA keeps for this program (localStorage['applicant-token-{uuid}'] = { token, expiresAt }), or null. */
+  async storedApplicantToken(programUuid: string): Promise<{ token: string; expiresAt: string } | null> {
+    const raw = await this.page.evaluate((key) => window.localStorage.getItem(key), applicantTokenStorageKey(programUuid));
     return raw ? JSON.parse(raw) : null;
   }
 
@@ -188,8 +210,10 @@ export class ProgramApplyPage {
     const submissionId = /\/(\d+)\/apply$/.exec(applied.url())![1];
     let applyStatus = applied.status();
     if (applyStatus === 429) {
+      /* The replay carries the applicant token the PWA sent (SAN-1959); a member's cookie rides page.request. */
+      const token = (await applied.request().allHeaders())[APPLICANT_TOKEN_HEADER];
       await this.page.waitForTimeout(61_000);
-      applyStatus = (await this.page.request.post(applied.url(), { data: {} })).status();
+      applyStatus = (await this.page.request.post(applied.url(), { data: {}, headers: token ? { [APPLICANT_TOKEN_HEADER]: token } : {} })).status();
     }
     return { save: saved, applyStatus, submissionId };
   }

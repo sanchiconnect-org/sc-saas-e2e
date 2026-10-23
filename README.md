@@ -85,7 +85,8 @@ In GitHub, go to **Settings → Environments** and create three environments: `d
   - `QA_CFA_TEMPLATE_FORM_ID`: id of the `[QA] E2E template form`. The whole `cfa` project is skipped without it.
   - `QA_CFA_NDA_PROGRAM_ID`: id of the `[QA] CFA NDA (do not delete)` program. Jury NDA tests are skipped without it.
   - `QA_CFA_CLOSED_PROGRAM_PATH`: `{code}/{slug}` of the `[QA] CFA Closed (do not delete)` program. Closed-program tests are skipped without it.
-  - `QA_CFA_EMAIL_PATTERN`, e.g. `sc_cfa_*@yopmail.com`: guest applicants. The QA backend's `QA_FIXED_OTP_EMAILS` must include the same pattern. Guest-OTP tests are skipped without it.
+  - `QA_CFA_EMAIL_PATTERN`, e.g. `sc_cfa_*@yopmail.com`: guest applicants. The QA backend's `QA_FIXED_OTP_EMAILS` must include the same pattern. Guest-OTP tests are skipped without it. Since SAN-1959 every guest call carries an applicant token from the fixed OTP, so on a backend with SAN-1959 a CFA run fails without it (see "Applicant token" below).
+  - `QA_EXPECT_APPLICANT_TOKEN_MODE` (optional): `enforce` or `log`. The applicant-token tests then fail when the QA backend's `APPLICANT_TOKEN_MODE` is the other one.
 
 If a role's secret is missing, that role's tests are **skipped**, not failed. Check the skip count in the report.
 
@@ -227,7 +228,15 @@ Call for Applications end to end, in `tests/cfa/` (spec FT-006, Linear project "
   - `cfaAdmin.submittedApplications()` reads the admin table view. Its `detailId` is what `/application-submission-detail/{id}` takes.
   - PWA page objects in `pages/frontend/cfa/`: ProgramApplyPage, GuestLeadModal, ApplicationStatusPage and CallForApplicationsPage.
   - `ProgramApplyPage.submitApplication()` returns the final save and the apply status, and backs off once on a 429.
-- Rate limits: the OTP routes and the CFA apply route allow 10 requests per 60 s. Only one test sends an OTP. Applicants that only need to exist are CSV-seeded rather than applied through the PWA.
+- Rate limits: the OTP routes and the CFA apply route allow 10 requests per 60 s. Only one test types an OTP into the PWA; the applicant tokens of CSV-seeded applicants are fetched through the API (one send + one verify per applicant and worker). Applicants that only need to exist are CSV-seeded rather than applied through the PWA.
+
+**Applicant token (SAN-1959).** Guest applicants have no account, so the backend wants proof of the email on every applicant route (status, documents, the guest form fetch/submit/upload, apply, payments, PowerPitch connect): an applicant token in the `x-applicant-token` header, or the owner's member JWT. The PWA gets the token from the email OTP verify (it sends `applicantProgramUUID`), or, on a bypass-OTP program, from the first form save. Enforcement is staged by the backend env `APPLICANT_TOKEN_MODE` (`log` by default: refusals are only logged; `enforce`: 401/403).
+- `cfaAdmin.applicationStatus(uuid, email)` gets the applicant's token through the fixed OTP and sends it. Pass `{ token: null }` (or a token of your own) for negative checks.
+- `ProgramApplyPage.useGuestIdentity()` stores the token next to the identity (`localStorage['applicant-token-<uuid>']`), as the OTP would have. Without one, the page asks for the OTP first.
+- `applicantToken(uuid, email)` in `fixtures/applicant-token.ts` does send + verify and caches the token per worker (it lives 120 min). It waits 61 s once on a 429, like the login.
+- Every address a test gets a token for must be on the backend's `QA_FIXED_OTP_EMAILS`: use `cfaEmail(…)` or a seeded member. Those addresses are exempt from the backend's 5-codes-per-email-per-hour limit.
+- `tests/cfa/applicant-token.spec.ts` holds the negative tests. It detects the mode with one tokenless probe (`detectApplicantTokenMode()`): in `enforce` it asserts each refusal (status and code), in `log` it asserts the same requests are still answered. The suite is green in both modes. Run it twice when the backend moves on: once in `log`, then after development is flipped to `enforce`, with `QA_EXPECT_APPLICANT_TOKEN_MODE=enforce` so a missed flip fails.
+- The admin "view as applicant" test needs the QA admin to have `backdoor_access`; it is skipped otherwise.
 
 Give every applicant you create a unique name or a `cfaEmail(runId, …)` address, and never touch another test's rows. A test that changes state for the whole program or a whole round (freeze, close, rounds, test mode) creates its own program with `createCfaProgram()` and deletes it in `afterAll`.
 

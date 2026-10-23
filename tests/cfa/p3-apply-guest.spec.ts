@@ -12,13 +12,30 @@
  * resubmission, freeze) are CSV-seeded by the admin, not applied through the PWA.
  *
  * A guest flow creates no user: the guest's identity lives in localStorage['application-{uuid}'].
+ *
+ * SAN-1959: the guest also holds an applicant token (localStorage['applicant-token-{uuid}'], sent as
+ * x-applicant-token): from the OTP verify on a normal program, or from the first form save on a
+ * bypass-OTP program (a submission-scoped `sid` token). useGuestIdentity() stores one obtained through
+ * the fixed OTP, so the seeded-applicant tests pass in APPLICANT_TOKEN_MODE=log and enforce alike.
  */
 import * as path from 'path';
 import { qaOtp } from '../../config/accounts';
 import { env } from '../../config/env';
-import { BUILDER_DEFAULT_VISIBILITY, cfaEmail, createCfaProgram, deleteCfaProgram, expect, test, type CfaProgram, type CfaRun } from '../../fixtures/cfa';
+import {
+  APPLICANT_TOKEN_HEADER,
+  BUILDER_DEFAULT_VISIBILITY,
+  cfaEmail,
+  createCfaProgram,
+  decodeApplicantToken,
+  deleteCfaProgram,
+  expect,
+  test,
+  type CfaProgram,
+  type CfaRun,
+} from '../../fixtures/cfa';
 import { newestEmailLogRowId, waitForNewEmailLogRow } from '../../fixtures/email-log';
 import { type Page, type Request } from '@playwright/test';
+import { ApplicantOtpPrompt } from '../../pages/frontend/cfa/ApplicantOtpPrompt';
 import { ApplicationStatusPage } from '../../pages/frontend/cfa/ApplicationStatusPage';
 import { ProgramApplyPage, isApply, isFormSave, savePayload } from '../../pages/frontend/cfa/ProgramApplyPage';
 import { FILE, NOTES, SHORT, createP3Program, rand, tableRow } from './p3-helpers';
@@ -74,18 +91,34 @@ test.describe('CFA P3: guest applies with the real OTP', { tag: TAGS }, () => {
     /* The guest identity is only kept in the browser: no session, no user. */
     expect(await apply.storedIdentity(cfaProgram.uuid)).toMatchObject({ email: applicant.email, name: applicant.name });
 
+    /* SAN-1959: the verify names the program and gets back an email-scoped applicant token (120 min),
+       which the PWA keeps for this program. */
+    expect(JSON.parse(verified.request().postData() ?? '{}').applicantProgramUUID, 'verify names the program').toBe(cfaProgram.uuid);
+    const issued = JSON.parse(verifyBody)?.data ?? {};
+    expect(typeof issued.applicantToken, 'verify returns applicantToken').toBe('string');
+    const claims = decodeApplicantToken(issued.applicantToken);
+    expect(claims).toMatchObject({ typ: 'cfa_applicant', email: applicant.email.toLowerCase(), programUUID: cfaProgram.uuid });
+    expect(claims.sid, 'an OTP token is email-scoped, not tied to one submission').toBeUndefined();
+    expect(claims.exp - claims.iat, 'token lifetime').toBe(120 * 60);
+    expect(Date.parse(issued.applicantTokenExpiresAt)).toBe(claims.exp * 1000);
+    expect((await apply.storedApplicantToken(cfaProgram.uuid))?.token, 'stored as applicant-token-<uuid>').toBe(issued.applicantToken);
+
     const first = await apply.formReady(firstSave);
     expect(savePayload(first).userId ?? null, 'a guest save carries no user id').toBeNull();
+    expect((await first.request().allHeaders())[APPLICANT_TOKEN_HEADER], 'the form save sends the token').toBe(issued.applicantToken);
 
     /* Answer every text question of the template form the PWA shows (a field whose visibility
        rule is unset, field=null + condition "is", is hidden by the PWA). */
     for (const f of (await cfaAdmin.formFields(cfaProgram.formId)).filter((x) => x.type === 'text_field' || x.type === 'text_area')) {
       if (await apply.field(f.key).isVisible()) await apply.field(f.key).fill(`QA answer ${tag}`);
     }
+    const applyRequest = page.waitForRequest((r) => isApply(r, cfaProgram.uuid));
     const { save, applyStatus } = await apply.submitApplication(cfaProgram);
     expect((await save.json())?.data?.submitted, 'saved as submitted').toBeTruthy();
     expect(applyStatus, 'apply').toBeLessThan(300);
     await expect(apply.submittedConfirmation).toBeVisible();
+    expect((await save.request().allHeaders())[APPLICANT_TOKEN_HEADER], 'the final save sends the token').toBe(issued.applicantToken);
+    expect((await (await applyRequest).allHeaders())[APPLICANT_TOKEN_HEADER], 'the apply call sends the token').toBe(issued.applicantToken);
 
     const row = await tableRow(cfaAdmin, cfaProgram, (r) => r.email === applicant.email);
     expect(row.status).toBe('Submitted');
@@ -115,7 +148,12 @@ test.describe('CFA P3: guest applicants on a bypass-OTP program', { tag: TAGS },
     if (program) await deleteCfaProgram(cfaAdmin, program.id);
   });
 
-  /** Opens the program as a new guest and goes through the (OTP-less) modal to the form. */
+  /**
+   * Opens the program as a new guest and goes through the (OTP-less) modal to the form.
+   * SAN-1959 (decision 1, lazy OTP): the guest has no token yet; the first save creates the row
+   * without one and its response carries a submission-scoped token (sid = that row, src = created),
+   * which the PWA stores and sends from then on.
+   */
   async function openFormAsNewGuest(page: Page, applicant: { name: string; email: string }) {
     const apply = new ProgramApplyPage(page);
     await apply.goto(program.code, program.slug);
@@ -124,7 +162,23 @@ test.describe('CFA P3: guest applicants on a bypass-OTP program', { tag: TAGS },
     const firstSave = apply.firstSave(program.formUUID);
     await modal.submitWithoutOtp();
     const first = await apply.formReady(firstSave);
+    await expectCreatedSidToken(apply, first, applicant.email);
     return { apply, first };
+  }
+
+  /** The bypass first save's sid token: issued for the new row only, and kept by the PWA. */
+  async function expectCreatedSidToken(apply: ProgramApplyPage, first: Awaited<ReturnType<ProgramApplyPage['formReady']>>, email: string) {
+    expect((await first.request().allHeaders())[APPLICANT_TOKEN_HEADER], 'the first save goes without a token').toBeUndefined();
+    const data = (await first.json())?.data ?? {};
+    expect(typeof data.applicantToken, 'the first save returns a sid token').toBe('string');
+    expect(decodeApplicantToken(data.applicantToken)).toMatchObject({
+      typ: 'cfa_applicant',
+      email: email.toLowerCase(),
+      programUUID: program.uuid,
+      sid: Number(data.id),
+      src: 'created',
+    });
+    await expect.poll(async () => (await apply.storedApplicantToken(program.uuid))?.token, { message: 'stored as applicant-token-<uuid>' }).toBe(data.applicantToken);
   }
 
   test('with bypass_otp_verification the guest applies without an OTP', async ({ adminPage, cfaAdmin, cfaRun, page }) => {
@@ -315,7 +369,21 @@ test.describe('CFA P3: guest applicants on a bypass-OTP program', { tag: TAGS },
       await apply.goto(program.code, program.slug);
       const modal = await apply.startApplication();
       await modal.fillApplicant({ name: seeded.name, email: seeded.email });
+      const firstSave = apply.firstSave(program.formUUID);
       await modal.submitWithoutOtp();
+      /* SAN-1959 lazy OTP: this guest has a row already, so the tokenless first save may only create.
+         In APPLICANT_TOKEN_MODE=enforce it is refused (401 APPLICANT_TOKEN_REQUIRED) and the page asks for
+         the email OTP once, then loads the saved application. In log mode the save goes through as before. */
+      const first = await firstSave;
+      if (first.status() === 401) {
+        expect((await first.json())?.code).toBe('APPLICANT_TOKEN_REQUIRED');
+        test.info().annotations.push({ type: 'applicant-token', description: 'enforce: the returning bypass guest proved the email by OTP' });
+        await new ApplicantOtpPrompt(page).verify(qaOtp());
+        expect(await apply.storedApplicantToken(program.uuid), 'the OTP token is kept').not.toBeNull();
+      } else {
+        expect(first.ok(), `first save: HTTP ${first.status()}`).toBe(true);
+        expect((await first.json())?.data?.applicantToken, 'no token for a save that updates an existing row').toBeUndefined();
+      }
       await expect(apply.field(SHORT.key)).toBeVisible({ timeout: 30_000 });
 
       const value = `QA resubmitted ${rand()}`;

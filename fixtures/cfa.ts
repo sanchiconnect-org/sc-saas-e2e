@@ -3,6 +3,18 @@ import * as path from 'path';
 import { test as base, request as playwrightRequest, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 import { adminAccount, authFile } from '../config/accounts';
 import { env } from '../config/env';
+import { applicantHeaders, applicantToken } from './applicant-token';
+
+export {
+  APPLICANT_TOKEN_HEADER,
+  applicantToken,
+  applicantTokenStorageKey,
+  decodeApplicantToken,
+  detectApplicantTokenMode,
+  expectedApplicantTokenMode,
+  type ApplicantTokenMode,
+  type IssuedApplicantToken,
+} from './applicant-token';
 
 /**
  * CFA (Call for Applications) regression fixture — FT-006 P1.
@@ -421,15 +433,26 @@ export class CfaAdmin {
 
   /**
    * An applicant's application on a program, as the PWA apply page reads it:
-   * POST application-programs-management/{programUuid}/check_application_status/{email}/details
-   * (no auth). 404 when the email has no application yet; data carries applicationNumber,
+   * POST application-programs-management/{programUuid}/check_application_status/{email}/details.
+   * 404 when the email has no application yet; data carries applicationNumber,
    * applicationStatus (accepted, rejected, tentative, …), currentRoundId and isRejected.
+   *
+   * SAN-1959: the route wants the applicant's token (x-applicant-token) or the owner's member JWT.
+   * By default this gets the applicant's own token through the fixed OTP (applicantToken(), cached
+   * per worker), so the call works in APPLICANT_TOKEN_MODE=log and enforce alike. `token` overrides
+   * it: a string is sent as is, null sends none (negative tests). `body` is the error body when not ok.
    */
-  async applicationStatus(programUuid: string, email: string): Promise<{ status: number; data?: Record<string, any> }> {
+  async applicationStatus(
+    programUuid: string,
+    email: string,
+    options: { token?: string | null } = {},
+  ): Promise<{ status: number; data?: Record<string, any>; body?: Record<string, any> }> {
+    const token = options.token !== undefined ? options.token : (await applicantToken(programUuid, email)).applicantToken;
     const res = await (await this.backend()).post(
       `/api/v1/application-programs-management/${programUuid}/check_application_status/${encodeURIComponent(email)}/details`,
+      { headers: applicantHeaders(token) },
     );
-    if (!res.ok()) return { status: res.status() };
+    if (!res.ok()) return { status: res.status(), body: await res.json().catch(() => undefined) };
     return { status: res.status(), data: (await res.json())?.data };
   }
 
@@ -743,6 +766,36 @@ export class CfaAdmin {
           currentRound: decodeHtml(/<span class="badge badge-dark">([^<]*)<\/span>/.exec(cells[3] ?? '')?.[1] ?? '').trim() || null,
         };
       });
+  }
+
+  /* ----- applicant identity (SAN-1959) ----- */
+
+  /**
+   * Adds one required-document type to a round (saveRoundDocumentUpload, edit_program_round.php: the
+   * round's "Document Upload" section). Also turns the round's is_document_required on. The new type's
+   * id is not in the response: read it back from the backend's fetch-documents for the round.
+   */
+  async addRoundDocumentType(program: { id: string }, roundId: string, name: string) {
+    return this.submitAction(`/application_management/edit_program_round/${roundId}`, 'saveRoundDocumentUpload', {
+      is_document_required: '1',
+      programId: program.id,
+      roundId,
+      document_sections: JSON.stringify([
+        { name, description: 'E2E document type', size: '5', file_type: 'file', allowed_file_types: ['pdf'], is_mandatory: 0, is_jury_can_view: 1, record_id: '' },
+      ]),
+    });
+  }
+
+  /**
+   * The admin's "view as applicant" click-through (application_management/view_as_applicant/{submissionId},
+   * SAN-2002): it checks the admin's backdoor_access, has the backend mint a submission-scoped applicant
+   * token, and 302-redirects to the PWA apply page with the token in the URL fragment. Returns the status
+   * and the Location header, without following it. 403 = this admin has no backdoor_access.
+   */
+  async viewAsApplicantRedirect(submissionId: string): Promise<{ status: number; location: string | null }> {
+    const api = await this.api();
+    const res = await api.get(`/application_management/view_as_applicant/${submissionId}`, { maxRedirects: 0 });
+    return { status: res.status(), location: res.headers()['location'] ?? null };
   }
 
   /* ----- jury (P5) ----- */
