@@ -20,6 +20,10 @@ on:
         description: 'SAN-1617: regenerate the visual baselines (runs only the visual projects; grep/project ignored). Download the visual-baselines artifact and commit it through a reviewed change.'
         type: boolean
         default: false
+      lighthouse:
+        description: 'SAN-1619: also run Lighthouse on login, startup dashboard and startup profile (always on in the nightly).'
+        type: boolean
+        default: false
   # Called by the smoke check in sc-saas-frontend and sc-saas-admin (SAN-1585):
   #   uses: sanchiconnect-org/sc-saas-e2e/.github/workflows/e2e.yml@main
   # The Environment named by `environment` is looked up in the CALLING repository, so each caller needs
@@ -38,6 +42,10 @@ on:
         description: 'Only run this Playwright project (frontend, admin or cfa). Empty runs every project.'
         type: string
         default: ''
+      lighthouse:
+        description: 'SAN-1619: also run Lighthouse on login, startup dashboard and startup profile (pass true from a deploy).'
+        type: boolean
+        default: false
   schedule:
     # Nightly at 02:00 IST (20:30 UTC) against development (ai_native_setup)
     - cron: '30 20 * * *'
@@ -49,7 +57,7 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     # Each environment is a GitHub Environment holding its own secrets (Settings → Environments).
     environment: ${{ inputs.environment || 'development' }}
     env:
@@ -113,6 +121,37 @@ jobs:
             if [ -n "$PROJECT" ]; then args+=(--project "$PROJECT"); fi
           fi
           npx playwright test "${args[@]}"
+
+      - name: Lighthouse (advisory)
+        # SAN-1619: its own step so the other workers' CPU load doesn't skew the scores; reuses the
+        # sessions saved by the test run. Advisory until about 2026-11-23: then drop continue-on-error
+        # and set LIGHTHOUSE_ENFORCE: 'true'.
+        if: ${{ !cancelled() && !inputs.update_snapshots && (github.event_name == 'schedule' || inputs.lighthouse) }}
+        continue-on-error: true
+        env:
+          LIGHTHOUSE: 'true'
+        # --reporter and --output keep the test run's HTML report, junit file and traces intact
+        run: npx playwright test --project=lighthouse --no-deps --reporter=github,list --output=lighthouse-results
+
+      - name: Lighthouse job summary
+        if: ${{ !cancelled() && hashFiles('lighthouse-reports/summary.json') != '' }}
+        run: |
+          {
+            echo "### Lighthouse, $E2E_ENV (median of runs, mobile)"
+            echo "| Page | Performance | Accessibility | LCP ms | TBT ms | CLS | Budget |"
+            echo "|---|---|---|---|---|---|---|"
+            jq -r '.pages | to_entries[] | .value as $p | $p.median as $m
+              | "| \(.key) | \($m.performance) | \($m.accessibility) | \($m.lcpMs) | \($m.tbtMs) | \($m.cls) | \(if ($p.misses | length) > 0 then "⚠️ " + ($p.misses | join("; ")) else "✅ within budget" end) |"' \
+              lighthouse-reports/summary.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Lighthouse reports
+        if: ${{ !cancelled() && hashFiles('lighthouse-reports/**') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-${{ env.E2E_ENV }}-${{ github.run_number }}
+          path: lighthouse-reports/
+          retention-days: 90
 
       - name: Upload visual baselines
         if: ${{ !cancelled() && inputs.update_snapshots }}

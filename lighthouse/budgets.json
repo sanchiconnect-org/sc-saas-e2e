@@ -1,0 +1,13 @@
+{
+  "_how": "SAN-1619. Set from a 3-run baseline (median): performance -8 points (dev login -12: it moved 26-38 over 6 runs), accessibility -3, LCP +15%, TBT +50%, CLS the larger of 0.1 and the worst run seen. Mobile preset with simulated throttling. Raise a budget only through a reviewed change, with the new baseline in the commit message.",
+  "development": {
+    "_baseline": "2026-10-23. ai_native_setup serves a non-production build (unhashed 11 MB vendor.js), so these numbers are much worse than staging's and only catch regressions on dev.",
+    "login": { "minPerformance": 25, "minAccessibility": 82, "maxLcpMs": 105000, "maxTbtMs": 5600, "maxCls": 0.2 },
+    "startup-dashboard": { "minPerformance": 23, "minAccessibility": 52, "maxLcpMs": 149000, "maxTbtMs": 7400, "maxCls": 0.1 },
+    "startup-profile": { "minPerformance": 24, "minAccessibility": 69, "maxLcpMs": 152000, "maxTbtMs": 8200, "maxCls": 0.1 }
+  },
+  "staging": {
+    "_baseline": "2026-10-23, login only: the QA startup account doesn't exist on demo.sanchiapp.com yet, so the dashboard and profile have no baseline.",
+    "login": { "minPerformance": 37, "minAccessibility": 87, "maxLcpMs": 31000, "maxTbtMs": 2100, "maxCls": 0.15 }
+  }
+}

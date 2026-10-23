@@ -104,7 +104,7 @@ If a role's secret is missing, that role's tests are **skipped**, not failed. Ch
 
 `.github/workflows/e2e.yml` runs:
 
-- **nightly** at 02:00 IST against `development`, with the full suite,
+- **nightly** at 02:00 IST against `development`, with the full suite, then Lighthouse (advisory, see below),
 - **on demand** via *Actions → e2e → Run workflow*, where you choose the environment and a tag (default `@smoke`).
 
 CI retries a failed test once. A test that passes only on the retry is reported as **flaky**. Quarantine it the same day with a Linear issue; never re-run until green.
@@ -286,6 +286,16 @@ The screens were chosen from the core journeys (2026-10-22); swap in the most-us
   1. Go to *Actions → e2e → Run workflow*, choose `development`, and tick **update_snapshots**.
   2. Download the `visual-baselines-…` artifact.
   3. Commit the changed `*-linux.png` files through a reviewed change. Never regenerate baselines just to make a failing run pass.
+
+## Lighthouse budgets (SAN-1619)
+
+`tests/lighthouse/` runs Lighthouse (mobile preset) on the PWA's **login**, **startup dashboard** and **startup profile** pages, using the startup session saved by `setup-frontend`. Each page is audited 3 times (`LIGHTHOUSE_RUNS`) and the median is compared with `lighthouse/budgets.json`: minimum performance and accessibility scores, and maximum LCP, TBT and CLS. Read-only.
+
+- **Run it:** `npm run test:lighthouse` (the `lighthouse` project only exists with `LIGHTHOUSE=true`, so a plain `npm test` never runs it next to the other workers, whose CPU load would skew the scores).
+- **Budgets are per environment.** Development serves a non-production Angular build (an unhashed 11 MB `vendor.js`), so its numbers are far worse than staging's and only catch regressions on dev. Staging has a login budget only: the QA startup account doesn't exist on `demo.sanchiapp.com` yet.
+- **Advisory until about 2026-11-23.** A miss is a `warning` annotation and a ⚠️ row in the job summary, never a failure, and the CI step has `continue-on-error`. After a month: remove `continue-on-error` and set `LIGHTHOUSE_ENFORCE: 'true'` on the step.
+- **In CI** it runs in the nightly and on *Run workflow* with **lighthouse** ticked. Every run renders a table in its job summary (the Actions run list is the history) and uploads `lighthouse-<env>-<n>` (HTML and JSON reports plus `summary.json`, kept 90 days).
+- **Changing a budget:** re-baseline with 3 runs and commit the new medians in the commit message. Never loosen a budget just to clear a warning.
 
 ## Rules the suite lives by
 

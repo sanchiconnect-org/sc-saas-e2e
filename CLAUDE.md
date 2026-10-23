@@ -6,9 +6,10 @@
 
 ## Stack & commands
 
-Node ≥ 20 · `@playwright/test` · TypeScript · `dotenv` · `tsx`. Default branch **`main`** (not `ai_native_setup`). No product code lives here.
+Node ≥ 22.19 (Lighthouse needs it) · `@playwright/test` · TypeScript · `dotenv` · `tsx`. Default branch **`main`** (not `ai_native_setup`). No product code lives here.
 
 - install: `npm ci && npx playwright install chromium`
+- Lighthouse: `npm run test:lighthouse` (project exists only with `LIGHTHOUSE=true`; budgets per env in `lighthouse/budgets.json`, SAN-1619)
 - type-check: `npm run typecheck`. Run this before every commit.
 - run: `npm test`, `npm run test:smoke`, `npm run test:cfa`, `npx playwright test <file> --project=<p> [--no-deps]`
 - seed QA accounts: `npm run seed` (idempotent)
