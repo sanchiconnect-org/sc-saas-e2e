@@ -128,6 +128,15 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
+      - name: Upload accessibility reports
+        # SAN-1610: axe JSON reports written by fixtures/a11y.ts (advisory; never fails the run).
+        if: ${{ !cancelled() && hashFiles('a11y-reports/**') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: a11y-reports-${{ env.E2E_ENV }}-${{ github.run_number }}
+          path: a11y-reports/
+          retention-days: 30
+
       - name: Upload traces and results
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7

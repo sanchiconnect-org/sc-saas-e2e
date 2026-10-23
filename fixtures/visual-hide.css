@@ -1,0 +1,6 @@
+/* SAN-1617: hidden (not masked) during visual comparisons — see fixtures/visual.ts. */
+.swal2-container, .badge, .count-badge, app-count-badge, .percentage-complete, span.fw-boldest.fs-2,
+.symbol, .avatar, img[alt*="avatar" i], img[alt*="profile" i], time, .date, [class*="date"],
+.counter, [class*="count"] {
+  visibility: hidden !important;
+}

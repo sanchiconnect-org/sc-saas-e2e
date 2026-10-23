@@ -27,6 +27,9 @@ test.describe('visual: public screens', { tag: TAGS }, () => {
   test('01 login page: a 1-pixel layout shift is caught (sensitivity guard)', async ({ page }) => {
     /* Done-when of SAN-1617: a deliberate one-pixel layout shift fails the check. Compared with the
        real 01-login baseline, so if this test ever "unexpectedly passes" the tolerance is too loose. */
+    /* In update mode a screenshot never fails, it's written: this test would then save the shifted
+       page as the 01-login baseline. So it only runs when comparing. */
+    test.skip(['all', 'changed'].includes(test.info().config.updateSnapshots), 'not run while baselines are being regenerated');
     test.fail(true, 'the 1px shift must make the 01-login comparison fail');
     await page.goto('/auth/login');
     await page.getByTestId('login-title').waitFor();
@@ -54,7 +57,9 @@ test.describe('visual: startup screens', { tag: TAGS }, () => {
   test('03 startup dashboard', async ({ page }) => {
     await page.goto('/startups/dashboard');
     /* Dashboard widgets hold live data (connections, events, programs, notifications). */
-    await expectScreen(page, '03-startup-dashboard', [...pwaMasks(page), page.locator('.card-body')]);
+    /* Option A (2026-10-23): the whole dashboard body is live data (and it changes overnight), so only
+       the app shell is compared: sidebar navigation, header bar and frame. */
+    await expectScreen(page, '03-startup-dashboard', [...pwaMasks(page), page.locator('app-startup-dashboard-layout-wrapper')]);
   });
 
   test('04 startup profile, basic information', async ({ page }) => {
@@ -74,7 +79,9 @@ test.describe('visual: startup screens', { tag: TAGS }, () => {
   test('06 call for applications list', async ({ page }) => {
     await page.goto('/call-for-applications');
     /* Program cards are live content; the page frame (tabs, search, header) is what's checked. */
-    await expectScreen(page, '06-call-for-applications', [...pwaMasks(page), page.locator('app-call-for-applications-card')]);
+    /* Option A: the program list is live data (cards come and go and shift the layout), so only the
+       app shell around it is compared. */
+    await expectScreen(page, '06-call-for-applications', [...pwaMasks(page), page.locator('app-call-for-applications')]);
   });
 });
 
@@ -87,7 +94,8 @@ test.describe('visual: investor screens', { tag: TAGS }, () => {
 
   test('08 investor dashboard', async ({ page }) => {
     await page.goto('/investors/dashboard');
-    await expectScreen(page, '08-investor-dashboard', [...pwaMasks(page), page.locator('.card-body')]);
+    /* Option A: dashboard body masked; the app shell is what's compared. */
+    await expectScreen(page, '08-investor-dashboard', [...pwaMasks(page), page.locator('app-investor-dashboard-wrapper')]);
   });
 });
 
