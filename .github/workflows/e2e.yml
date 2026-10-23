@@ -64,6 +64,10 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.64.0-noble
       options: --ipc=host
+    # steps use bash arrays; a container job's default shell is sh
+    defaults:
+      run:
+        shell: bash
     # Each environment is a GitHub Environment holding its own secrets (Settings → Environments).
     environment: ${{ inputs.environment || 'development' }}
     env:
@@ -138,15 +142,17 @@ jobs:
 
       - name: Lighthouse job summary
         if: ${{ !cancelled() && hashFiles('lighthouse-reports/summary.json') != '' }}
+        # node, not jq: the Playwright image has no jq
         run: |
-          {
-            echo "### Lighthouse, $E2E_ENV (median of runs, mobile)"
-            echo "| Page | Performance | Accessibility | LCP ms | TBT ms | CLS | Budget |"
-            echo "|---|---|---|---|---|---|---|"
-            jq -r '.pages | to_entries[] | .value as $p | $p.median as $m
-              | "| \(.key) | \($m.performance) | \($m.accessibility) | \($m.lcpMs) | \($m.tbtMs) | \($m.cls) | \(if ($p.misses | length) > 0 then "⚠️ " + ($p.misses | join("; ")) else "✅ within budget" end) |"' \
-              lighthouse-reports/summary.json
-          } >> "$GITHUB_STEP_SUMMARY"
+          node -e '
+            const s = require("./lighthouse-reports/summary.json");
+            const rows = Object.entries(s.pages).map(([page, p]) => {
+              const m = p.median;
+              const budget = p.misses.length ? "⚠️ " + p.misses.join("; ") : "✅ within budget";
+              return `| ${page} | ${m.performance} | ${m.accessibility} | ${m.lcpMs} | ${m.tbtMs} | ${m.cls} | ${budget} |`;
+            });
+            console.log([`### Lighthouse, ${s.env} (median of runs, mobile)`, "| Page | Performance | Accessibility | LCP ms | TBT ms | CLS | Budget |", "|---|---|---|---|---|---|---|", ...rows].join("\n"));
+          ' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Lighthouse reports
         if: ${{ !cancelled() && hashFiles('lighthouse-reports/**') != '' }}

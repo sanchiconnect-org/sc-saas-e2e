@@ -27,8 +27,8 @@ const PAGES: { name: string; path: string; needsLogin: boolean }[] = [
   { name: 'startup-profile', path: '/startups/edit/startup-information', needsLogin: true },
 ];
 
-/* One Chrome at a time: parallel audits would slow each other down and skew the numbers. */
-test.describe.configure({ mode: 'serial' });
+/* One Chrome at a time (parallel audits would skew each other), but a failed page doesn't skip the
+   rest the way serial mode would: the project sets fullyParallel: false, so one worker runs them in order. */
 
 for (const target of PAGES) {
   test(`lighthouse: ${target.name}`, { tag: ['@regression', '@lighthouse', '@frontend', '@startup'] }, async () => {

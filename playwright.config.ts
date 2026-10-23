@@ -67,7 +67,7 @@ export default defineConfig({
        advisory until LIGHTHOUSE_ENFORCE=true). Only defined with LIGHTHOUSE=true, so it never runs
        next to the other workers (their CPU load skews the scores): `npm run test:lighthouse`. */
     ...(process.env.LIGHTHOUSE === 'true'
-      ? [{ name: 'lighthouse', testDir: './tests/lighthouse', dependencies: ['setup-frontend'], use: { baseURL: env.frontendUrl } }]
+      ? [{ name: 'lighthouse', testDir: './tests/lighthouse', fullyParallel: false, dependencies: ['setup-frontend'], use: { baseURL: env.frontendUrl } }]
       : []),
     {
       name: 'admin',
