@@ -34,6 +34,13 @@ on:
         description: 'Environment to run against (development, staging or production)'
         type: string
         default: development
+      github_environment:
+        description: >-
+          GitHub Environment (in the calling repo) that holds the QA secrets, when it is not named like
+          `environment`. The smoke checks pass `qa`: their `staging` Environment holds the Jenkins deploy
+          credentials and only allows stagingdemo/main, so a PR run must not use it (SAN-1585, SAN-1597).
+        type: string
+        default: ''
       grep:
         description: 'Only run tests matching this tag. Empty runs everything.'
         type: string
@@ -69,7 +76,7 @@ jobs:
       run:
         shell: bash
     # Each environment is a GitHub Environment holding its own secrets (Settings → Environments).
-    environment: ${{ inputs.environment || 'development' }}
+    environment: ${{ inputs.github_environment || inputs.environment || 'development' }}
     env:
       CI: 'true'
       E2E_ENV: ${{ inputs.environment || 'development' }}
