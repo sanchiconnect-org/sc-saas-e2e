@@ -96,8 +96,10 @@ test.describe('tenant API contracts (SAN-1609)', { tag: ['@regression', '@api', 
   });
 
   test('tenant-settings response carries no secret field values', async () => {
-    /* Known leak: settings.factacy_api_key is still returned with a value on the QA cockpit (SAN-1941). */
-    test.fail(true, 'SAN-1941: public tenant-settings still returns factacy_api_key');
+    /* SAN-1941: factacy_api_key left the public response on 2026-10-24 (tenants bd609f3), live on
+       development. Staging and production still send it until that release reaches them; drop this
+       line then. */
+    test.fail(env.name !== 'development', 'SAN-1941: this cockpit predates bd609f3 and still returns factacy_api_key');
 
     const { status, body } = await fetchCockpitJson(`/api/v1/public/global/tenant-settings/${host}`);
     expect(status).toBe(200);
