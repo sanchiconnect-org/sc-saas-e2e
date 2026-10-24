@@ -369,20 +369,26 @@ test.describe('CFA P3: guest applicants on a bypass-OTP program', { tag: TAGS },
       await apply.goto(program.code, program.slug);
       const modal = await apply.startApplication();
       await modal.fillApplicant({ name: seeded.name, email: seeded.email });
+      const fetched = apply.draftFetch(program.formUUID);
       const firstSave = apply.firstSave(program.formUUID);
       await modal.submitWithoutOtp();
-      /* SAN-1959 lazy OTP: this guest has a row already, so the tokenless first save may only create.
-         In APPLICANT_TOKEN_MODE=enforce it is refused (401 APPLICANT_TOKEN_REQUIRED) and the page asks for
-         the email OTP once, then loads the saved application. In log mode the save goes through as before. */
-      const first = await firstSave;
-      if (first.status() === 401) {
+      /* The form first looks the guest's submission up by email. When that finds the sent-back row it
+         loads it and makes no first save (the form only saves a row it hasn't got). SAN-1959 lazy OTP:
+         in APPLICANT_TOKEN_MODE=enforce that tokenless lookup is refused, the form treats the guest as
+         new, its first save is refused too (401 APPLICANT_TOKEN_REQUIRED), and the page asks for the
+         email OTP once, then loads the saved application. */
+      const lookup = await fetched;
+      const found = lookup.ok() ? (await lookup.json())?.data : undefined;
+      if (found?.id) {
+        expect(String(found.id), 'the lookup loads the sent-back submission').toBe(seeded.id);
+      } else {
+        expect(lookup.status(), 'the tokenless lookup is refused only in enforce').toBe(401);
+        const first = await firstSave;
+        expect(first.status(), `first save: HTTP ${first.status()}`).toBe(401);
         expect((await first.json())?.code).toBe('APPLICANT_TOKEN_REQUIRED');
         test.info().annotations.push({ type: 'applicant-token', description: 'enforce: the returning bypass guest proved the email by OTP' });
         await new ApplicantOtpPrompt(page).verify(qaOtp());
         expect(await apply.storedApplicantToken(program.uuid), 'the OTP token is kept').not.toBeNull();
-      } else {
-        expect(first.ok(), `first save: HTTP ${first.status()}`).toBe(true);
-        expect((await first.json())?.data?.applicantToken, 'no token for a save that updates an existing row').toBeUndefined();
       }
       await expect(apply.field(SHORT.key)).toBeVisible({ timeout: 30_000 });
 

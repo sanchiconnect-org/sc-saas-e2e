@@ -119,7 +119,9 @@ test.describe('SAN-1959: applicant token on the public call-for-applications rou
 
   test("the applicant's own token reads their status (every mode)", async ({ cfaAdmin }) => {
     const own = await cfaAdmin.applicationStatus(program.uuid, a.email);
-    expect(own.status, JSON.stringify(own.body)).toBe(200);
+    /* the route is a POST, so Nest answers 201 */
+    expect(own.status, JSON.stringify(own.body)).toBeGreaterThanOrEqual(200);
+    expect(own.status, JSON.stringify(own.body)).toBeLessThan(300);
     expect(Number(own.data?.submissionId)).toBe(Number(a.id));
   });
 

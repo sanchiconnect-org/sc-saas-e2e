@@ -28,12 +28,22 @@ test.describe('visual: admin applications table view', { tag: TAGS }, () => {
   test('10 admin applications table view', async ({ page, cfaProgram }) => {
     await page.goto(`/application_management/submission-application-management-tableview/${cfaProgram.id}/${cfaProgram.adminSlug}`);
     await page.getByRole('button', { name: '+ Add Round' }).waitFor();
-    /* Rows are whatever the run's other tests seeded (or an empty state); the program title differs
-       every run and is shown truncated in a level-3 heading. */
+    /* The run's other CFA tests add applications to this program while it runs, and the table's size
+       and header row change with them (2026-10-24: 0 rows at baseline, 4 in the nightly). A search
+       that matches nothing always gives the same empty table. */
+    const search = page.getByPlaceholder('Search by keyword');
+    await search.fill('qa-visual-no-such-application');
+    await search.press('Enter');
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => undefined);
+    /* Masked: the program title (truncated, level-3 heading), the round tab names (they carry the run
+       id), the submissions count, the remembered page-size choice, and the empty-state text. */
     await expectScreen(page, '10-admin-applications-table', [
       ...adminMasks(page),
       page.locator('tbody'),
       page.getByRole('heading', { level: 3 }),
+      page.getByText(/^\s*\[QA\] R\d+-/),
+      page.getByRole('button', { name: /submissions/i }),
+      page.getByText(/^\s*\d+ records\s*$/),
     ]);
   });
 });

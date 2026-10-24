@@ -174,6 +174,20 @@ export class ProgramApplyPage {
     return save;
   }
 
+  /**
+   * The form's lookup of the guest's existing submission by email (POST public/forms-management/
+   * submission/{form}/fetch). When it returns a row with an id the form loads it and makes no first
+   * save until the applicant acts. Call BEFORE the action that opens the form, like firstSave().
+   */
+  draftFetch(formUUID: string): Promise<Response> {
+    const fetched = this.page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().includes(`/forms-management/submission/${formUUID}/fetch`),
+      { timeout: 45_000 },
+    );
+    fetched.catch(() => undefined);
+    return fetched;
+  }
+
   /** Waits for the form to show and its first save to succeed; returns that save. */
   async formReady(firstSave: Promise<Response>): Promise<Response> {
     await expect(this.applicationForm).toBeVisible({ timeout: 30_000 });
