@@ -10,8 +10,13 @@ export class OneOnOneEventModal {
   constructor(private readonly page: Page) {}
 
   /** Resolves with GET /api/v2/events/upcoming, which the dashboard loads on every visit. */
+  /* 45 s: dev serves an unoptimised 16 MB build, and a reload under the suite's parallel load has
+     taken longer than the default 15 s (flaked 2026-10-23 and 10-24). */
   waitForUpcomingEvents(): Promise<Response> {
-    return this.page.waitForResponse((r) => r.request().method() === 'GET' && /\/api\/v2\/events\/upcoming(\?|$)/.test(r.url()));
+    return this.page.waitForResponse(
+      (r) => r.request().method() === 'GET' && /\/api\/v2\/events\/upcoming(\?|$)/.test(r.url()),
+      { timeout: 45_000 },
+    );
   }
 
   /** The event's entry in the dashboard's event lists. */

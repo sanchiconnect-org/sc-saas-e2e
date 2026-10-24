@@ -63,32 +63,41 @@ export async function approveMemberProfile(role: MemberRole) {
     if (!id) throw new Error(`No ${stake.table} row matching search "${stake.search}"`);
 
     const detailPath = `/${stake.detailBase}/${id}/details`;
-    const tokenRes = await admin.post(detailPath, {
-      form: { submitAction: 'generateBackdoorToken' },
-      maxRedirects: 0,
-    });
-    const tokenJson = parseAdminJson('generateBackdoorToken', tokenRes.status(), await tokenRes.text());
-    if (!tokenJson.success || !tokenJson.successMessage) {
-      throw new Error(`generateBackdoorToken failed for ${role} #${id}: ${JSON.stringify(tokenJson)}`);
-    }
-
-    const api = await playwrightRequest.newContext({
-      baseURL: env.apiUrl,
-      extraHTTPHeaders: { 'x-hostname': new URL(env.frontendUrl).hostname },
-    });
-    try {
-      const approve = await api.post(
-        `/api/v1/admin-actions/approve/${stake.profileType}/${id}/${tokenJson.successMessage}`,
-        { data: { approvalMessage: `QA e2e approve ${role}` } },
-      );
-      const text = await approve.text();
-      /* 409 "already approved" is fine — idempotent for re-runs. */
-      if (!approve.ok() && !(approve.status() === 409 && /already approved/i.test(text))) {
-        throw new Error(`approve ${role} #${id} → HTTP ${approve.status()}: ${text.slice(0, 300)}`);
+    /* The backdoor token is the QA admin's one current token, so tests running in parallel can replace
+       it between generate and approve: the backend then answers 404 "Admin not found". Each attempt
+       generates a fresh token; a third failure is a real one. */
+    for (let attempt = 1; ; attempt++) {
+      const tokenRes = await admin.post(detailPath, {
+        form: { submitAction: 'generateBackdoorToken' },
+        maxRedirects: 0,
+      });
+      const tokenJson = parseAdminJson('generateBackdoorToken', tokenRes.status(), await tokenRes.text());
+      if (!tokenJson.success || !tokenJson.successMessage) {
+        throw new Error(`generateBackdoorToken failed for ${role} #${id}: ${JSON.stringify(tokenJson)}`);
       }
-      return { id, status: approve.status(), body: text };
-    } finally {
-      await api.dispose();
+
+      const api = await playwrightRequest.newContext({
+        baseURL: env.apiUrl,
+        extraHTTPHeaders: { 'x-hostname': new URL(env.frontendUrl).hostname },
+      });
+      try {
+        const approve = await api.post(
+          `/api/v1/admin-actions/approve/${stake.profileType}/${id}/${tokenJson.successMessage}`,
+          { data: { approvalMessage: `QA e2e approve ${role}` } },
+        );
+        const text = await approve.text();
+        if (approve.status() === 404 && /Admin not found/i.test(text) && attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+          continue;
+        }
+        /* 409 "already approved" is fine — idempotent for re-runs. */
+        if (!approve.ok() && !(approve.status() === 409 && /already approved/i.test(text))) {
+          throw new Error(`approve ${role} #${id} → HTTP ${approve.status()}: ${text.slice(0, 300)}`);
+        }
+        return { id, status: approve.status(), body: text };
+      } finally {
+        await api.dispose();
+      }
     }
   } finally {
     await admin.dispose();

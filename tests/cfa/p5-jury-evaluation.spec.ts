@@ -232,9 +232,12 @@ test.describe('CFA P5: jury NDA (long-lived program)', { tag: TAGS }, () => {
       const accepted = await list.signNda(juryName);
       expect(accepted.status()).toBe(200);
 
-      await expect(list.ratingForm).toBeVisible({ timeout: 30_000 });
+      /* The application's details open (its #APP number heading). Not the rating form: that also
+         depends on the application still being in this round, and on 2026-10-24 the program's one
+         application had been moved on ("You cannot rate this application as it has been moved to
+         another round"), which says nothing about the NDA gate. */
+      await expect(jury.page.getByRole('heading', { level: 5, name: /^#APP\d+/ })).toBeVisible({ timeout: 30_000 });
       await expect(list.ndaModal).toBeHidden();
-      expect(await list.openSubmissionId()).toBeTruthy();
     } finally {
       await jury.close();
     }
